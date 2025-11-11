@@ -1,0 +1,52 @@
+services:
+  mongo:
+    build: ./mongo
+    container_name: mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - backend
+
+  fastapi:
+    build: ./fastapi-app
+    container_name: fastapi
+    depends_on:
+      - mongo
+    environment:
+      MONGO_URI: mongodb://root:example@mongo:27017
+    ports:
+      - "8000:8000"
+    networks:
+      - backend
+
+  scraper:
+    build: ./scraper
+    container_name: scraper
+    depends_on:
+      - fastapi
+    command: ["python", "main.py"]
+    environment:
+      API_URL: http://fastapi:8000
+    networks:
+      - backend
+
+  cli:
+    build: ./cli
+    container_name: cli
+    depends_on:
+      - fastapi
+    environment:
+      API_URL: http://fastapi:8000
+    networks:
+      - backend
+    tty: true
+    stdin_open: true
+
+networks:
+  backend:
+
+volumes:
+  mongo_data:
