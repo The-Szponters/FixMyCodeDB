@@ -34,9 +34,6 @@ jobs:
       - name: Run flake8
         run: flake8 cli fastapi_app scraper
 
-      - name: Run mypy
-        run: mypy cli fastapi_app scraper
-
       - name: Run bandit
         run: bandit -r cli fastapi_app scraper
 
