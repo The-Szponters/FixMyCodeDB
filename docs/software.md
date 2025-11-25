@@ -217,8 +217,11 @@ Plik `.github/workflows/ci.yml` definiuje pipeline uruchamiany przy:
 ### Kroki pipeline'u
 
 **1. Checkout kodu**
+
 **2. Konfiguracja środowiska Python**
+
 **3. Instalacja zależności**
+
 **4. Analiza jakości kodu - flake8**
 ```bash
 flake8 cli fastapi_app scraper
@@ -261,7 +264,7 @@ Wypełniona baza danych wraz z systemem odpowiedzialnym za jej stworzenie oraz C
 ## TA-1: Ekstrakcja danych z repozytorium Git
 
 **Scenariusz:**\
-Użytkownik uruchamia scraper poprzez CLI dla repozytorium C++ (np. https://github.com/mozilla-firefox/firefox, wiedłki datowe/commitowe), system analizuje historię commitów, wybiera pary, przypisuje do niej etykierę i zapisuje rekordy w bazie.
+Użytkownik uruchamia scraper poprzez CLI dla repozytorium C++ https://github.com/mozilla-firefox/firefox, wiedłki 01.01.2020 - 01.01.2024, system analizuje historię commitów, wybiera pary, przypisuje do niej etykierę i zapisuje rekordy w bazie.
 
 **Kroki:**
 1. Uruchomienie scrapera poprzez CLI, z plikiem konfiguracyjnym w którym jest podane analizowane repozytorium
@@ -273,7 +276,7 @@ Użytkownik uruchamia scraper poprzez CLI dla repozytorium C++ (np. https://gith
 5. Automatyczne przypisanie etykiet do par
 
 **Kryteria akceptacji:**
--   co najmniej 10 rekordów zostaje zapisanych w bazie dla repozytorium z >10000 commitami
+-   co najmniej 100 rekordów zostanie zapisanych
 -   dla każdego rekordu `code_buggy != code_fixed`
 -   etykieta jest poprawnie przypisana do kategorii błędu
 
@@ -285,23 +288,28 @@ Użytkownik wykorzystuje narzędzie CLI do eksploracji bazy danych oraz wyszukiw
 
 **Kroki:**
 1. Wylistowanie wszystkich rekordów
+- użytkownik wpisuje w CLI `list-all`
 2. Filtrowanie po etykiecie
+- użytkownik wpisuje w CLI `list-label --MemError`
 
 **Kryteria akceptacji:**
 -   CLI zwraca tabelę z kolumnami: `code_buggy`,`code_fixed`, `labels`
--   filtrowanie po `labels` zawęża wyniki tylko do rekordów z daną etykietą
+-   filtrowanie po `labels` zawęża wyniki tylko do rekordów z daną etykietą (w tym przypadku MemError)
 
-## TA-3: Eksport danych do formatu ML
+## TA-3: Eksport danych do formatu JSON/CSV
 
 **Scenariusz:**\
-Użytkownik eksportuje przefiltrowane rekordy do formatu JSON/CSV nadającego się do użycia jako dataset treningowy dla modeli transformerowych.
+Użytkownik eksportuje przefiltrowane rekordy do formatu JSON/CSV nadającego się do użycia jako dataset treningowy dla modeli opartych o architekturę transformer.
 
 **Kroki:**
 1. Eksport wszystkich rekordów
+- użytkownik wpisuje w CLI `export-all --JSON` / `export-all --CSV`
 2. Eksport przefiltrowany
+- użytkownik wpisuje w CLI `export-labels --[labels: MemError] --JSON`
 
 
 **Kryteria akceptacji:**
+-   aplikacja zapisuje na dysku plik z danymi w pożądanym formacie
 -   filtrowanie po `labels` zawęża wyniki tylko do rekordów z daną etykietą
 -   format JSON zawiera co najmniej pola: code_buggy, code_fixed, labels
 -   format CSV zawiera co najmniej kolumny: code_buggy, code_fixed, labels
@@ -313,10 +321,10 @@ Użytkownik eksportuje przefiltrowane rekordy do formatu JSON/CSV nadającego si
 **Scenariusz:**\
 Użytkownik ręcznie edytuje rekord aby poprawić etykiety.
 - ręczna edycja rekordu w CLI
+Uzytkownik wpisuje `edit {id} --add-label --[labels: MemError]` lub `edit {id} --remove-label --[labels: MemError]`
 
 **Kryteria akceptacji:**
--   użytkownik ma możliwość wyboru rekordu do edycji
--   edycja aktualizuje tylko podane etykiety
+-   rekord jest odpowiednio edytowany, zmiany są widoczne w bazie
 
 ## TA-5: Przygotowanie datasetu do treningu transformera
 
@@ -325,10 +333,10 @@ Badacz ML eksportuje dane z bazy i używa ich do fine-tuningu modelu CodeBERT na
 
 **Kroki:**
 1. Eksport danych treningowych
-np. W CLI export to json
+ - użytkownik wpisuje w CLI `export-all --JSON`
 2. Załadowanie danych
 3. Trening klasyfikatora
 4. Ewaluacja na zbiorze testowym z bazy
 
 **Kryteria akceptacji:**
--   po treningu model osiąga accuracy >70% na zbiorze testowym
+-   po treningu model osiąga większe accuracy niż przed treningiem o co najmniej 10 p.p.
