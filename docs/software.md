@@ -291,7 +291,7 @@ Użytkownik wykorzystuje narzędzie CLI do eksploracji bazy danych oraz wyszukiw
 -   CLI zwraca tabelę z kolumnami: `code_buggy`,`code_fixed`, `labels`
 -   filtrowanie po `labels` zawęża wyniki tylko do rekordów z daną etykietą
 
-## TA-3: Eksport danych do formatu ML
+## TA-3: Eksport danych do formatu JSON/CSV
 
 **Scenariusz:**\
 Użytkownik eksportuje przefiltrowane rekordy do formatu JSON/CSV nadającego się do użycia jako dataset treningowy dla modeli transformerowych.
