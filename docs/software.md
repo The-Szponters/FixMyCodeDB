@@ -123,12 +123,128 @@ Python: - najlepiej wspiera charakter projektu, - integruje się z ML, -
 umożliwia tworzenie czytelnego, modularnego, testowalnego kodu.
 
 
+# Wykorzystywane technologie
+
+
+## Komponenty systemu
+
+### 1. MongoDB (Baza danych)
+
+**Technologia:** MongoDB 6 w kontenerze Docker
+
+**Zadania:**
+-   przechowywanie rekordów zawierających pary `code_buggy` i `code_fixed`
+-   przechowywanie metadanych repozytoriów
+-   przechowywanie etykiet błędów
+
+**Wybór technologii:**
+-   MongoDB jako NoSQL dobrze poradzi sobie z przechowywaniem półstrukturalnych danych (fragmenty kodu mogą mieć różną długość i strukturę)
+-   Schemat dokumentowy pozwala na elastyczne rozszerzanie etykiet
+
+### 2. FastAPI (Backend API)
+
+**Technologia:** FastAPI >=0.121, hostowane przez uvicorn.
+
+**Zadania:**
+-   warstwa dostępu do bazy danych (prosty CRUD + wyszukiwanie z użyciem filtrów i sortowanie)
+
+**Wybór technologii:**
+-   proste w użyciu
+-   niewymagana wysoka złożoność i wydajność w naszym projekcie
+
+**Kluczowe endpointy:**
+-   `POST /entries/` - dodawanie nowego rekordu
+-   `GET /entries/{id}` - pobranie rekordu po ID
+-   `GET /entries/` - lista wszystkich rekordów
+-   `PUT /entries/{id}` - aktualizacja rekordu
+-   `DELETE /entries/{id}` - usunięcie rekordu
+-   `POST /entries/query/` - zaawansowane filtrowanie z parametrami sort/limit
+
+### 3. Scraper (Ekstraktor danych z repozytoriów)
+
+**Technologia:** Python 3.12
+
+**Zadania:**
+-   analiza repozytoriów Git projektów C++
+-   filtrowanie commitów zawierających poprawki błędów (regex na komunikaty commitów: "fix", "bug", "patch" itp.)
+-   ekstrakcja par `code_buggy` i `code_fixed`
+-   wstępne automatyczne przypisanie etykiet
+
+Będziemy korzystać z Github API.
+
+## Narzędzia analizy statycznej kodu
+
+Aplikacja będzie wykorzystywał narzędzia do statycznej analizy kodu w celu usprawnienia procesu etykietowania błędów.
+ - `cppcheck`
+ - `clang-tidy`
+
+Etykiety z tych narzędzi będą pogrupowane w etykiety o szerszym zakresie np.
+ - Klasa ogólna: MemError
+    - błędy z `cppcheck`: memLeak, doubleFree, mismatchAllocDealloc, nullPointerDereference ...
+
+
+### 4. CLI (Narzędzie konsolowe)
+
+**Technologia:** Python 3.12
+
+**Zadania:**
+-   interaktywny interfejs dla użytkownika końcowego
+-   przeglądanie, filtrowanie i wyszukiwanie rekordów
+-   ręczne dodawanie i edycja rekordów
+-   eksport danych do plików CSV/JSON
+-   wywoływanie scrapera
+
+Aplikacja bedzię korzystać z **plików konfiguracyjnych**, które będą określać jakie repozytoria ma analizować scraper i w jaki sposób ma to robić.
+
+
+
+## Konteneryzacja
+
+**Technologia:** Docker
+
+Wszystkie komponenty są konteneryzowane.
+
+# Pipeline CI
+
+Projekt wykorzystuje **GitHub Actions** do automatyzacji testowania i kontroli jakości kodu.
+
+## Konfiguracja CI
+
+Plik `.github/workflows/ci.yml` definiuje pipeline uruchamiany przy:
+-   każdym pushu na gałąź `main`
+-   każdym Pull Requeście
+
+### Kroki pipeline'u
+
+**1. Checkout kodu**
+**2. Konfiguracja środowiska Python**
+**3. Instalacja zależności**
+**4. Analiza jakości kodu - flake8**
+```bash
+flake8 cli fastapi_app scraper
+```
+
+**5. Analiza bezpieczeństwa - bandit**
+```bash
+bandit -r cli fastapi_app scraper
+```
+
+## Przyszłe rozszerzenia CI
+
+### Pipeline CD
+Nie planujemy rozszerzenia o CD, gdyż rozwiązanie ma w zamyśle działać lokalnie.
+
+### Testy jednostkowe i integracyjne
+-   testy jednostkowe dla wszystkich modułów
+-   testy integracyjne
+
 # Minimum Viable Product (MVP)
 
-Funkcjonalne, kompletne narzędzie CLI, które obejmuje implementację
-kluczowych wymagań **"MUST"** i realizuje podstawowe scenariusze
-zdefiniowanych przypadków użycia.
+Wypełniona baza danych wraz z systemem odpowiedzialnym za jej stworzenie oraz CLI umożliwiający dostęp do bazy.
 
+### Baza:
+-   Dostarczona baza danych zawiera min. 1000 rekordów - par **code_buggy** i **code_fixed** oraz odpowiednio poetykietowanych tak, aby miała dane miały wartość badawczą do wykorzystania do trenowania modeli ML
+### System:
 -   System filtruje commity wskazanego repozytorium, przygotowuje pary
     **code_buggy** i **code_fixed** oraz wstawia je jako rekordy do bazy
     danych
@@ -136,35 +252,83 @@ zdefiniowanych przypadków użycia.
     pomocą narzędzi analizy statystycznej
 -   System umożliwia ręczne przypisanie, edycję etykiet dla rekordów,
     ręczne dodawanie rekordów
--   System umożliwia przeglądanie i filtrowanie zebranych rekordów
--   System umożliwia eksport rekordów do JSON/CSV
+### CLI:
+-   CLI umożliwia przeglądanie i filtrowanie zebranych rekordów, pozyskiwanie danych
 
 # Testy akceptacyjne
 
-## TA-1
 
-**Uruchomienie analizy nowego projektu**\
-Po podaniu repozytorium Git, system filtruje commity i zapisuje w bazie
-rekordy zawierające pary **code_buggy** i **code_fixed**
+## TA-1: Ekstrakcja danych z repozytorium Git
 
-## TA-2
+**Scenariusz:**\
+Użytkownik uruchamia scraper poprzez CLI dla repozytorium C++ (np. https://github.com/mozilla-firefox/firefox, wiedłki datowe/commitowe), system analizuje historię commitów, wybiera pary, przypisuje do niej etykierę i zapisuje rekordy w bazie.
 
-**Półautomatyczne etykietowanie**\
-Rekordy zapisane w bazie są poprawnie poetykietowane na podstawie
-analizy statycznej kodu **code_buggy**
+**Kroki:**
+1. Uruchomienie scrapera poprzez CLI, z plikiem konfiguracyjnym w którym jest podane analizowane repozytorium
+2. Filtrowanie commitów po regex (np. `(fix|bug|patch|repair|correct)`) w wiadomości
+3. Ekstrakcja diffów dla plików `.cpp`, `.h`, `.cc`
+4. Utworzenie rekordów z polami:
+   - `code_buggy` - kod przed poprawką
+   - `code_fixed` - kod po poprawce
+5. Automatyczne przypisanie etykiet do par
 
-## TA-3
+**Kryteria akceptacji:**
+-   co najmniej 10 rekordów zostaje zapisanych w bazie dla repozytorium z >10000 commitami
+-   dla każdego rekordu `code_buggy != code_fixed`
+-   etykieta jest poprawnie przypisana do kategorii błędu
 
-**Aplikacja konsolowa i filtrowanie**\
-Użytkownik jest w stanie uruchomić aplikację konsolową i za jej pomocą
-wyszukać oraz wyświetlić przefiltrowane rekordy.
 
-## TA-4
+## TA-2: Interaktywne CLI - przeglądanie i filtrowanie
 
-**Eksport do pliku**\
-System poprawnie eksportuje dane do pliku **JSON/CSV**
+**Scenariusz:**\
+Użytkownik wykorzystuje narzędzie CLI do eksploracji bazy danych oraz wyszukiwania rekordów według kryteriów.
 
-## TA-5
+**Kroki:**
+1. Wylistowanie wszystkich rekordów
+2. Filtrowanie po etykiecie
 
-**Ręczne dodawanie/edycja rekordów**\
-Sprawdzenie poprawności dodawania oraz edycji rekordów
+**Kryteria akceptacji:**
+-   CLI zwraca tabelę z kolumnami: `code_buggy`,`code_fixed`, `labels`
+-   filtrowanie po `labels` zawęża wyniki tylko do rekordów z daną etykietą
+
+## TA-3: Eksport danych do formatu ML
+
+**Scenariusz:**\
+Użytkownik eksportuje przefiltrowane rekordy do formatu JSON/CSV nadającego się do użycia jako dataset treningowy dla modeli transformerowych.
+
+**Kroki:**
+1. Eksport wszystkich rekordów
+2. Eksport przefiltrowany
+
+
+**Kryteria akceptacji:**
+-   filtrowanie po `labels` zawęża wyniki tylko do rekordów z daną etykietą
+-   format JSON zawiera co najmniej pola: code_buggy, code_fixed, labels
+-   format CSV zawiera co najmniej kolumny: code_buggy, code_fixed, labels
+-   plik JSON jest poprawny syntaktycznie
+-   znaki specjalne w kodzie C++ są prawidłowo zapisane
+
+## TA-4: Edycja rekordu
+
+**Scenariusz:**\
+Użytkownik ręcznie edytuje rekord aby poprawić etykiety.
+- ręczna edycja rekordu w CLI
+
+**Kryteria akceptacji:**
+-   użytkownik ma możliwość wyboru rekordu do edycji
+-   edycja aktualizuje tylko podane etykiety
+
+## TA-5: Przygotowanie datasetu do treningu transformera
+
+**Scenariusz:**\
+Badacz ML eksportuje dane z bazy i używa ich do fine-tuningu modelu CodeBERT na zadaniu klasyfikacji błędów w kodzie C++.
+
+**Kroki:**
+1. Eksport danych treningowych
+np. W CLI export to json
+2. Załadowanie danych
+3. Trening klasyfikatora
+4. Ewaluacja na zbiorze testowym z bazy
+
+**Kryteria akceptacji:**
+-   po treningu model osiąga accuracy >70% na zbiorze testowym
