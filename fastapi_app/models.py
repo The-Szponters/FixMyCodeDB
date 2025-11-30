@@ -1,6 +1,8 @@
-from pydantic import BaseModel, Field
-from typing import Optional, Dict
+from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
+from typing import Optional, Dict, Annotated
 from datetime import datetime
+
+PyObjectId = Annotated[str, BeforeValidator(str)]
 
 
 class RepoInfo(BaseModel):
@@ -10,11 +12,11 @@ class RepoInfo(BaseModel):
 
 
 class LabelsGroup(BaseModel):
-    memory_errors: int = Field(0, ge=0, le=1)
-    undefined_behavior: int = Field(0, ge=0, le=1)
-    correctness: int = Field(0, ge=0, le=1)
-    performance: int = Field(0, ge=0, le=1)
-    style: int = Field(0, ge=0, le=1)
+    memory_errors: bool = False
+    undefined_behavior: bool = False
+    correctness: bool = False
+    performance: bool = False
+    style: bool = False
 
 
 class Labels(BaseModel):
@@ -24,9 +26,15 @@ class Labels(BaseModel):
 
 
 class CodeEntry(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
     code_original: str
     code_fixed: Optional[str] = None
-    code_hash: str
+    code_hash: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
     repo: RepoInfo
     ingest_timestamp: datetime
     labels: Labels
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+    )
