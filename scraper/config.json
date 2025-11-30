@@ -1,0 +1,18 @@
+{
+  "repositories": [
+    {
+      "url": "https://github.com/bitcoin/bitcoin",
+      "target_record_count": 5,
+      "fix_regexes": [
+        "(?i)fix",
+        "(?i)bug",
+        "(?i)patch",
+        "(?i)correct",
+        "(?i)resolve",
+        "(?i)vulnerability",
+        "(?i)cve",
+        "(?i)plug memory leak"
+      ]
+    }
+  ]
+}

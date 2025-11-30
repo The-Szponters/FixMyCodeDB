@@ -1,11 +1,12 @@
 import time
+from scraper.network.server import start_server
+from scraper.core.engine import run_scraper
+from scraper.config.scraper_config import ScraperConfig, RepoConfig
 
 
 def main():
-    while True:
-        print("Scraping data...")
-        # Add scraping logic here
-        time.sleep(15)  # Wait for 15 seconds before the next scrape
+    start_server(run_scraper)
+    # run_scraper("./scraper/config.json")
 
 
 if __name__ == "__main__":
