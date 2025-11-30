@@ -6,7 +6,7 @@ import socket
 
 
 API_BASE = os.getenv("API_URL", "http://localhost:8000")
-SCRAPER_ADDR = os.getenv("SCRAPER_ADDR", "127.0.0.1")
+SCRAPER_ADDR = os.getenv("SCRAPER_ADDR", "scraper")
 SCRAPER_PORT = os.getenv("SCRAPER_PORT", 8080)
 
 FILTER_PARAMS = {
@@ -79,45 +79,62 @@ def do_import(params):
 
         data = response.json()
         count = len(data)
-        print(f"✅ Success! API returned {count} entries matching your criteria.")
+        print(f"Success! API returned {count} entries matching your criteria.")
 
         try:
             with open(params['target file'], 'w') as f:
                 json.dump(data, f, indent=2)
             print(f"Data imported to {params['target file']}")
         except Exception as e:
-            print(f"❌ Error writing to file: {e}")
+            print(f"Error writing to file: {e}")
 
         if count > 0:
             print(f"Sample ID: {data[0].get('_id')}")
 
     except requests.exceptions.ConnectionError:
-        print(f"❌ Error: Could not connect to {API_BASE}. Is the 'fastapi' container running?")
+        print(f"Error: Could not connect to {API_BASE}. Is the 'fastapi' container running?")
     except requests.exceptions.HTTPError as e:
-        print(f"❌ API Error: {e.response.text}")
+        print(f"API Error: {e.response.text}")
     except Exception as e:
-        print(f"❌ Unexpected Error: {e}")
+        print(f"Unexpected Error: {e}")
 
 
 def do_scrape(params):
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(("", 0))
-    s.settimeout(5)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     filename = params.get("config_file")
 
     try:
-        s.sendto(f"SCRAPE {filename}".encode(), (SCRAPER_ADDR, int(SCRAPER_PORT)))
+        s.settimeout(10)
+        s.connect((SCRAPER_ADDR, SCRAPER_PORT))
+        s.sendall(f"SCRAPE {filename}".encode())
         print(f"Sent SCRAPE command to scraper at {SCRAPER_ADDR}:{SCRAPER_PORT} with config '{filename}'")
         print(f"SCRAPE {filename}")
 
-        # Wait for a response (blocking)
-        response, _ = s.recvfrom(4096)
+        # Wait for a confirmation response
+        response = s.recv(4096)
+        if not response:
+            print("Error: No response from scraper.")
+            s.close()
+            return
         print(f"Received response from scraper: {response.decode()}")
 
+        # Now wait for the final completion message
+        s.settimeout(3600)  # 1 hour timeout for long scrapes
+        response = s.recv(4096)
+        if not response:
+            print("Error: No response from scraper.")
+            s.close()
+            return
+        print(f"Scraper finished: {response.decode()}")
+
+    except socket.gaierror:
+        print(f"Error: Could not resolve scraper address '{SCRAPER_ADDR}'. Is the 'scraper' container running?")
+        s.close()
+        return
     except socket.timeout:
-        print("❌ Error: Scraper did not respond in time.")
+        print("Error: Scraper did not respond in time.")
     except Exception as e:
-        print(f"❌ Unexpected Error: {e}")
+        print(f"Unexpected Error: {e}")
     finally:
         s.close()
 
