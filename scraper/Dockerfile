@@ -15,5 +15,5 @@ RUN apt-get update && apt-get install -y \
 # Set timezone to Europe/Warsaw
 RUN ln -sf /usr/share/zoneinfo/Europe/Warsaw /etc/localtime && dpkg-reconfigure -f noninteractive tzdata
 
-COPY . .
-CMD ["python", "main.py"]
+COPY . ./scraper
+CMD ["python3", "-m", "scraper.main"]
