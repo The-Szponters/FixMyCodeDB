@@ -1,70 +1,65 @@
-from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Body
+from motor.motor_asyncio import AsyncIOMotorClient
+from typing import List, Dict
 from models import CodeEntry
-from crud import create_entry, get_entry, update_entry, delete_entry, list_entries
-from typing import Optional, Dict
-from fastapi.responses import JSONResponse
+import crud
 
-app = FastAPI(title="FixMyCode API")
-
-
-# Helper to serialize ObjectId to str
-def serialize_doc(doc):
-    doc["_id"] = str(doc["_id"])
-    return doc
+MONGO_URL = "mongodb://root:example@mongo:27017"
+DB_NAME = "appdb"
 
 
-# Create
-@app.post("/entries/")
-async def create(code: CodeEntry):
-    entry_id = await create_entry(code)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.mongodb_client = AsyncIOMotorClient(MONGO_URL)
+    app.mongodb = app.mongodb_client[DB_NAME]
+    print("Connected to MongoDB")
+    yield
+    app.mongodb_client.close()
+    print("Disconnected from MongoDB")
+
+app = FastAPI(title="FixMyCode API", lifespan=lifespan)
+
+
+@app.post("/entries/", response_model=Dict[str, str], status_code=201)
+async def create(entry: CodeEntry):
+    entry_id = await crud.create_entry(app.mongodb, entry)
     return {"id": entry_id}
 
 
-# Read by ID
-@app.get("/entries/{entry_id}")
+@app.get("/entries/{entry_id}", response_model=CodeEntry)
 async def read(entry_id: str):
-    entry = await get_entry(entry_id)
+    entry = await crud.get_entry(app.mongodb, entry_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
-    return serialize_doc(entry)
+    return entry
 
 
-# Read all
-@app.get("/entries/", response_class=JSONResponse)
-async def get_all_entries():
-    docs = await list_entries()
-    return [serialize_doc(doc) for doc in docs]
+@app.get("/entries/", response_model=List[CodeEntry])
+async def get_all_entries(limit: int = 100):
+    return await crud.list_entries(app.mongodb, limit=limit)
 
 
-# Update by ID
 @app.put("/entries/{entry_id}")
-async def update(entry_id: str, data: Dict):
-    count = await update_entry(entry_id, data)
+async def update(entry_id: str, data: Dict = Body(...)):
+    count = await crud.update_entry(app.mongodb, entry_id, data)
     if count == 0:
-        raise HTTPException(status_code=404, detail="Entry not found")
+        raise HTTPException(status_code=404, detail="Entry not found or no changes made")
     return {"updated": count}
 
 
-# Delete by ID
 @app.delete("/entries/{entry_id}")
 async def delete(entry_id: str):
-    count = await delete_entry(entry_id)
+    count = await crud.delete_entry(app.mongodb, entry_id)
     if count == 0:
         raise HTTPException(status_code=404, detail="Entry not found")
     return {"deleted": count}
 
 
-# Advanced filtering + sorting
-@app.post("/entries/query/")
+@app.post("/entries/query/", response_model=List[CodeEntry])
 async def query_entries(
-    filter: Optional[Dict] = {},
-    sort: Optional[Dict] = {},
+    filter: Dict = Body(default={}),
+    sort: Dict = Body(default={}),
     limit: int = 100
 ):
-    """
-    filter: dict of field:value, e.g. {"labels.groups.memory_errors":1}
-    sort: dict of field:direction, direction=1 for asc, -1 for desc
-    limit: maximum number of entries to return
-    """
-    entries = await list_entries(filter, sort, limit)
-    return [serialize_doc(e) for e in entries]
+    return await crud.list_entries(app.mongodb, filter, sort, limit)
