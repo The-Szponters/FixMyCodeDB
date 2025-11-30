@@ -33,18 +33,6 @@ services:
     networks:
       - backend
 
-  cli:
-    build: ./cli
-    container_name: cli
-    depends_on:
-      - fastapi
-    environment:
-      API_URL: http://fastapi:8000
-    networks:
-      - backend
-    tty: true
-    stdin_open: true
-
 networks:
   backend:
 
