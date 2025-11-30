@@ -1,6 +1,7 @@
-def main():
-    print("CLI tool running...")
-
+from cli.loop import run_menu_loop
 
 if __name__ == "__main__":
-    main()
+    try:
+        run_menu_loop()
+    except KeyboardInterrupt:
+        print("\nExiting. Goodbye!")
