@@ -101,7 +101,6 @@ def do_import(params):
 
 def do_scrape(params):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("", 0))
     filename = params.get("config_file")
 
     try:
@@ -113,11 +112,19 @@ def do_scrape(params):
 
         # Wait for a confirmation response
         response = s.recv(4096)
+        if not response:
+            print("Error: No response from scraper.")
+            s.close()
+            return
         print(f"Received response from scraper: {response.decode()}")
 
         # Now wait for the final completion message
         s.settimeout(3600)  # 1 hour timeout for long scrapes
         response = s.recv(4096)
+        if not response:
+            print("Error: No response from scraper.")
+            s.close()
+            return
         print(f"Scraper finished: {response.decode()}")
 
     except socket.gaierror:
