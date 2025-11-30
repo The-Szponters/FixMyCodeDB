@@ -1,25 +1,33 @@
 import socket
-import threading
 from typing import Any, Callable
 
 
 def start_server(callback: Callable[[str], Any]) -> None:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(('0.0.0.0', 60000))
+    sock.listen()
 
-    print("UDP Server listening...")
+    print("TCP Server listening...")
 
     while True:
-        data, addr = sock.recvfrom(512)
-        decoded_data = data.decode()
-        response = b""
+        conn, addr = sock.accept()
+        with conn:
+            data = conn.recv(1024)
+            if not data:
+                continue
 
-        if decoded_data.startswith("SCRAPE "):
-            filename = decoded_data[7:]
-            thread = threading.Thread(target=callback, args=(filename,))
-            thread.start()
-            response = f"ACK: Scraping {filename}".encode()
-        else:
-            response = b"ERROR: Invalid format. Use: SCRAPE {filename}"
+            decoded_data = data.decode()
 
-        sock.sendto(response, addr)
+            if decoded_data.startswith("SCRAPE "):
+                filename = decoded_data[7:]
+                response = f"ACK: Scraping {filename}".encode()
+                print("sent1")
+                conn.sendall(response)
+                callback(filename)
+                response = f"ACK: Finished Scraping {filename}".encode()
+                conn.sendall(response)
+                print("sent2")
+            else:
+                response = b"ERROR: Invalid format. Use: SCRAPE {filename}"
+                conn.sendall(response)

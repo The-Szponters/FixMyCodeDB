@@ -1,17 +1,19 @@
 {
   "repositories": [
     {
-      "url": "https://github.com/bitcoin/bitcoin",
+      "url": "https://github.com/chromium/chromium",
       "target_record_count": 5,
       "fix_regexes": [
-        "(?i)fix",
-        "(?i)bug",
-        "(?i)patch",
-        "(?i)correct",
-        "(?i)resolve",
-        "(?i)vulnerability",
-        "(?i)cve",
-        "(?i)plug memory leak"
+        "(?i)\\bbug\\b",
+        "(?i)\\bcrash",
+        "(?i)\\bdefect",
+        "(?i)\\bfail(ure|ed)?\\b",
+        "(?i)\\bleak",
+        "(?i)\\bvulnerability",
+        "(?i)\\bcve",
+        "(?i)\\bcrbug",
+        "(?i)use-after-free",
+        "(?i)buffer overflow"
       ]
     }
   ]
