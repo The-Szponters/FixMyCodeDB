@@ -74,7 +74,7 @@ def do_import(params):
     endpoint = f"{API_BASE}/entries/query/"
 
     try:
-        response = requests.post(endpoint, json=payload)
+        response = requests.post(endpoint, json=payload, timeout=5)
         response.raise_for_status()
 
         data = response.json()
