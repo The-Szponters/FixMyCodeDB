@@ -29,8 +29,12 @@ services:
       - fastapi
     environment:
       API_URL: http://fastapi:8000
+      GITHUB_TOKEN: placeholder_for_token
     ports:
       - "8080:8080"
+    volumes:
+      - ./scraper:/app/scraper
+      - ./extracted_data:/app/extracted_data
     networks:
       - backend
 
