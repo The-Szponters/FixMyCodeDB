@@ -149,4 +149,5 @@ class CLIApp(CommandTree):
 
         self.add_command("scrape", do_scrape, param_set={"config_file": "config.json"})
         self.add_command("import", do_import, param_set={"sort by": "ingest_timestamp", **FILTER_PARAMS, "target file": "import.json"})
+        self.add_command("import-all", do_import, param_set={"target file": "import.json"})
         self.add_command("label", do_label, param_set={})
