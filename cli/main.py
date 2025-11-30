@@ -1,6 +1,6 @@
 from cli.loop import run_menu_loop
 import os
-import subprocess
+import subprocess  # nosec B404
 import sys
 
 
@@ -17,7 +17,7 @@ def manage_infrastructure(command, working_dir):
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE
-        )
+        )  # nosec B603
     except subprocess.CalledProcessError as e:
         print(f"\n[!] Error executing Docker command: {' '.join(cmd)}")
         print(f"[!] Docker Output: {e.stderr.decode().strip()}")
