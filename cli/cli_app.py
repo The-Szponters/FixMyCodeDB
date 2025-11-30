@@ -6,7 +6,7 @@ import socket
 
 
 API_BASE = os.getenv("API_URL", "http://localhost:8000")
-SCRAPER_ADDR = os.getenv("SCRAPER_ADDR", "scraper")
+SCRAPER_ADDR = os.getenv("SCRAPER_ADDR", "127.0.0.1")
 SCRAPER_PORT = os.getenv("SCRAPER_PORT", 8080)
 
 FILTER_PARAMS = {
