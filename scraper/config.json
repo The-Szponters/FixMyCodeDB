@@ -1,0 +1,20 @@
+{
+  "repositories": [
+    {
+      "url": "https://github.com/chromium/chromium",
+      "target_record_count": 5,
+      "fix_regexes": [
+        "(?i)\\bbug\\b",
+        "(?i)\\bcrash",
+        "(?i)\\bdefect",
+        "(?i)\\bfail(ure|ed)?\\b",
+        "(?i)\\bleak",
+        "(?i)\\bvulnerability",
+        "(?i)\\bcve",
+        "(?i)\\bcrbug",
+        "(?i)use-after-free",
+        "(?i)buffer overflow"
+      ]
+    }
+  ]
+}
