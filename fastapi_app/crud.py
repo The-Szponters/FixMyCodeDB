@@ -1,8 +1,8 @@
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from models import CodeEntry
 from typing import Dict, List, Optional
-from bson import ObjectId
 
+from bson import ObjectId
+from models import CodeEntry
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 COLL = "code_entries"
 
@@ -45,12 +45,7 @@ async def delete_entry(db: AsyncIOMotorDatabase, entry_id: str) -> int:
     return result.deleted_count
 
 
-async def list_entries(
-    db: AsyncIOMotorDatabase,
-    filter_dict: Dict = {},
-    sort_dict: Dict = {},
-    limit: int = 100
-) -> List[CodeEntry]:
+async def list_entries(db: AsyncIOMotorDatabase, filter_dict: Dict = {}, sort_dict: Dict = {}, limit: int = 100) -> List[CodeEntry]:
 
     if "_id" in filter_dict and isinstance(filter_dict["_id"], str):
         try:

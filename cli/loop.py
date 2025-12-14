@@ -1,4 +1,5 @@
 import questionary
+
 from cli.cli_app import CLIApp
 from cli.command_tree import CommandNode, custom_style
 
@@ -12,18 +13,12 @@ def run_menu_loop():
 
         # Option A: If this node is executable, offer to run it
         if current_node.is_command and current_node != app.root:
-            choices.append(questionary.Choice(
-                title=f"▶ Run '{current_node.name}'",
-                value="EXECUTE_CURRENT"
-            ))
+            choices.append(questionary.Choice(title=f"▶ Run '{current_node.name}'", value="EXECUTE_CURRENT"))
             choices.append(questionary.Separator())
 
         # Option B: List Children (Sub-commands)
         for child_name in current_node.children:
-            choices.append(questionary.Choice(
-                title=child_name,
-                value=current_node.children[child_name]
-            ))
+            choices.append(questionary.Choice(title=child_name, value=current_node.children[child_name]))
 
         # Option C: Navigation (Back/Exit)
         choices.append(questionary.Separator())
@@ -36,11 +31,7 @@ def run_menu_loop():
         # 2. Display the Menu
         # The 'pointer' and 'highlighted' style handles the arrow keys and underlining
         selection = questionary.select(
-            message=f"Location: {get_breadcrumbs(current_node)}",
-            choices=choices,
-            style=custom_style,
-            use_indicator=True,  # Shows the arrow >
-            instruction="(Use arrow keys)"
+            message=f"Location: {get_breadcrumbs(current_node)}", choices=choices, style=custom_style, use_indicator=True, instruction="(Use arrow keys)"  # Shows the arrow >
         ).ask()
 
         # 3. Handle Selection logic

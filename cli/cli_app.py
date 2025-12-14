@@ -1,9 +1,10 @@
-from cli.command_tree import CommandTree
-import os
-import requests
 import json
+import os
 import socket
 
+import requests
+
+from cli.command_tree import CommandTree
 
 API_BASE = os.getenv("API_URL", "http://localhost:8000")
 SCRAPER_ADDR = os.getenv("SCRAPER_ADDR", "127.0.0.1")
@@ -22,7 +23,7 @@ FILTER_PARAMS = {
     "has_logic_error": "",
     "has_resource_leak": "",
     "has_security_portability": "",
-    "has_code_quality_performance": ""
+    "has_code_quality_performance": "",
 }
 
 
@@ -50,7 +51,7 @@ def build_api_payload(params):
         "has_logic_error": "labels.groups.logic_error",
         "has_resource_leak": "labels.groups.resource_leak",
         "has_security_portability": "labels.groups.security_portability",
-        "has_code_quality_performance": "labels.groups.code_quality_performance"
+        "has_code_quality_performance": "labels.groups.code_quality_performance",
     }
 
     for cli_key, db_key in bool_map.items():
@@ -71,11 +72,7 @@ def do_import(params):
 
     limit = int(params.get("limit", 100))
 
-    payload = {
-        "filter": query_filter,
-        "limit": limit,
-        "sort": {}
-    }
+    payload = {"filter": query_filter, "limit": limit, "sort": {}}
 
     endpoint = f"{API_BASE}/entries/query/"
 
@@ -88,7 +85,7 @@ def do_import(params):
         print(f"Success! API returned {count} entries matching your criteria.")
 
         try:
-            with open(params['target file'], 'w') as f:
+            with open(params["target file"], "w") as f:
                 json.dump(data, f, indent=2)
             print(f"Data imported to {params['target file']}")
         except Exception as e:

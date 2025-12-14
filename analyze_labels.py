@@ -5,9 +5,8 @@ Counts cppcheck issues found in all JSON files.
 """
 
 import json
-import os
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
 
 
 def analyze_labels(data_dir: str = "extracted_data"):
@@ -29,16 +28,7 @@ def analyze_labels(data_dir: str = "extracted_data"):
 
     cppcheck_issues = defaultdict(int)
 
-    groups_stats = {
-        "memory_management": 0,
-        "invalid_access": 0,
-        "uninitialized": 0,
-        "concurrency": 0,
-        "logic_error": 0,
-        "resource_leak": 0,
-        "security_portability": 0,
-        "code_quality_performance": 0
-    }
+    groups_stats = {"memory_management": 0, "invalid_access": 0, "uninitialized": 0, "concurrency": 0, "logic_error": 0, "resource_leak": 0, "security_portability": 0, "code_quality_performance": 0}
 
     # Process all JSON files
     json_files = list(data_path.glob("*.json"))
@@ -53,7 +43,7 @@ def analyze_labels(data_dir: str = "extracted_data"):
         total_files += 1
 
         try:
-            with open(json_file, 'r') as f:
+            with open(json_file, "r") as f:
                 data = json.load(f)
 
             labels = data.get("labels", {})
@@ -98,8 +88,7 @@ def analyze_labels(data_dir: str = "extracted_data"):
 
     if cppcheck_issues:
         print("\nTop cppcheck issues:")
-        sorted_cppcheck = sorted(cppcheck_issues.items(),
-                                key=lambda x: x[1], reverse=True)
+        sorted_cppcheck = sorted(cppcheck_issues.items(), key=lambda x: x[1], reverse=True)
         for issue_type, count in sorted_cppcheck[:10]:
             print(f"  {issue_type:40} {count:5} issues")
     else:
@@ -108,8 +97,7 @@ def analyze_labels(data_dir: str = "extracted_data"):
     print(f"\n{'=' * 60}")
     print("HIGH-LEVEL CATEGORY GROUPS")
     print("=" * 60)
-    for group_name, count in sorted(groups_stats.items(),
-                                   key=lambda x: x[1], reverse=True):
+    for group_name, count in sorted(groups_stats.items(), key=lambda x: x[1], reverse=True):
         percentage = (count / files_with_labels * 100) if files_with_labels > 0 else 0
         print(f"  {group_name:25} {count:5} files ({percentage:5.1f}%)")
 

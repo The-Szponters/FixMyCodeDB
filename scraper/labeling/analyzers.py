@@ -4,9 +4,8 @@ Analyzers for static code analysis tools (cppcheck, clang-tidy).
 
 import subprocess
 import tempfile
-import json
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict, List
 
 
 class CppcheckAnalyzer:
@@ -28,25 +27,17 @@ class CppcheckAnalyzer:
         if not code.strip():
             return []
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.cpp', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False) as f:
             f.write(code)
             temp_file = f.name
 
         try:
             # Run cppcheck with text output (JSON template doesn't work properly)
             result = subprocess.run(
-                [
-                    "cppcheck",
-                    "--enable=all",
-                    "--inline-suppr",
-                    "--suppress=missingInclude",
-                    "--suppress=missingIncludeSystem",
-                    "--suppress=unmatchedSuppression",
-                    temp_file
-                ],
+                ["cppcheck", "--enable=all", "--inline-suppr", "--suppress=missingInclude", "--suppress=missingIncludeSystem", "--suppress=unmatchedSuppression", temp_file],
                 capture_output=True,
                 text=True,
-                timeout=self.timeout
+                timeout=self.timeout,
             )
 
             # Parse text output from stderr (cppcheck outputs to stderr)
@@ -55,18 +46,17 @@ class CppcheckAnalyzer:
 
             issues = []
             import re
+
             for line in result.stderr.splitlines():
                 # Parse text format: "/path/file.cpp:line:col: severity: message [issueId]"
                 # Example: /tmp/test.cpp:1:16: error: syntax error [syntaxError]
-                match = re.search(r'\[(\w+)\]', line)
+                match = re.search(r"\[(\w+)\]", line)
                 if match:
                     issue_id = match.group(1)
                     # Filter out suppressed and informational issues
-                    if issue_id not in ['missingInclude', 'missingIncludeSystem',
-                                       'unmatchedSuppression', 'checkersReport',
-                                       'normalCheckLevelMaxBranches']:
+                    if issue_id not in ["missingInclude", "missingIncludeSystem", "unmatchedSuppression", "checkersReport", "normalCheckLevelMaxBranches"]:
                         # Create a minimal issue dict for compatibility
-                        issues.append({'id': issue_id})
+                        issues.append({"id": issue_id})
                         print(f"[DEBUG] Cppcheck found: {issue_id}")
 
             if not issues:
@@ -106,24 +96,17 @@ class ClangTidyAnalyzer:
         if not code.strip():
             return []
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.cpp', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False) as f:
             f.write(code)
             temp_file = f.name
 
         try:
             # Run clang-tidy
             result = subprocess.run(
-                [
-                    "clang-tidy",
-                    temp_file,
-                    "--",
-                    "-std=c++17",
-                    "-Wno-everything",  # Suppress compiler warnings
-                    "-ferror-limit=0"    # Don't stop on errors
-                ],
+                ["clang-tidy", temp_file, "--", "-std=c++17", "-Wno-everything", "-ferror-limit=0"],  # Suppress compiler warnings  # Don't stop on errors
                 capture_output=True,
                 text=True,
-                timeout=self.timeout
+                timeout=self.timeout,
             )
 
             # Parse output
@@ -163,7 +146,7 @@ class ClangTidyAnalyzer:
                 if "[" in line and "]" in line:
                     start = line.rfind("[")
                     end = line.rfind("]")
-                    check_name = line[start+1:end]
+                    check_name = line[start + 1 : end]
 
                     # Extract message
                     warning_pos = line.find("warning:")
@@ -172,10 +155,7 @@ class ClangTidyAnalyzer:
 
                     if msg_start != -1:
                         message = line[msg_start:start].strip()
-                        issues.append({
-                            "id": check_name,
-                            "message": message
-                        })
+                        issues.append({"id": check_name, "message": message})
                 else:
                     # Generic warning without check name
                     if "warning:" in line:

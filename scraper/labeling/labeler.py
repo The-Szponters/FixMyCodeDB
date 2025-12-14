@@ -3,6 +3,7 @@ Main Labeler class that orchestrates code analysis.
 """
 
 from typing import Dict, List
+
 from .analyzers import CppcheckAnalyzer
 from .config_mapper import ConfigBasedMapper
 
@@ -22,9 +23,10 @@ class Labeler:
             config_path: Path to labels_config.json (optional)
         """
         import os
+
         self.cppcheck = CppcheckAnalyzer(timeout=timeout)
         if config_path is None:
-            config_path = os.path.join(os.path.dirname(__file__), '..', 'labels_config.json')
+            config_path = os.path.join(os.path.dirname(__file__), "..", "labels_config.json")
         self.mapper = ConfigBasedMapper(config_path)
 
     def analyze(self, code_buggy: str, code_fixed: str = None) -> Dict:
@@ -76,10 +78,7 @@ class Labeler:
         # Map to high-level groups using config-based mapper
         groups = self.mapper.map_to_groups(cppcheck_labels)
 
-        return {
-            "cppcheck": cppcheck_labels,
-            "groups": groups
-        }
+        return {"cppcheck": cppcheck_labels, "groups": groups}
 
     def _extract_unique_issues(self, results: list) -> List[str]:
         """

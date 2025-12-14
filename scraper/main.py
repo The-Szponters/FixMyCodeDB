@@ -1,5 +1,5 @@
-from scraper.network.server import start_server
 from scraper.core.engine import run_scraper
+from scraper.network.server import start_server
 
 
 def main():

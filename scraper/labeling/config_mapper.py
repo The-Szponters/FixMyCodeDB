@@ -1,8 +1,9 @@
 """
 Config-based mapper for cppcheck issues to label categories.
 """
+
 import json
-from typing import Dict, List, Set
+from typing import Dict, List
 
 
 class ConfigBasedMapper:
@@ -15,11 +16,11 @@ class ConfigBasedMapper:
         Args:
             config_path: Path to labels_config.json
         """
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config = json.load(f)
 
-        self.error_classification = config['error_classification']
-        self.ignore_set = set(config['ignore_list'])
+        self.error_classification = config["error_classification"]
+        self.ignore_set = set(config["ignore_list"])
 
         # Build reverse mapping: issue_id -> category_name
         self.issue_to_category: Dict[str, str] = {}
@@ -68,7 +69,7 @@ class ConfigBasedMapper:
             "logic_error": False,
             "resource_leak": False,
             "security_portability": False,
-            "code_quality_performance": False
+            "code_quality_performance": False,
         }
 
         # Set flags based on detected issues

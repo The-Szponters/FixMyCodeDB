@@ -14,11 +14,19 @@ class LabelMapper:
     # Memory-related errors
     MEMORY_ERRORS: Set[str] = {
         # Cppcheck
-        "memleak", "memleakOnRealloc", "resourceLeak",
-        "doubleFree", "mismatchAllocDealloc",
-        "nullPointer", "nullPointerRedundantCheck", "nullPointerArithmetic",
-        "uninitvar", "uninitdata", "uninitStructMember",
-        "useAfterFree", "deallocret",
+        "memleak",
+        "memleakOnRealloc",
+        "resourceLeak",
+        "doubleFree",
+        "mismatchAllocDealloc",
+        "nullPointer",
+        "nullPointerRedundantCheck",
+        "nullPointerArithmetic",
+        "uninitvar",
+        "uninitdata",
+        "uninitStructMember",
+        "useAfterFree",
+        "deallocret",
         # Clang
         "clang-analyzer-core.NullDereference",
         "clang-analyzer-unix.Malloc",
@@ -30,12 +38,18 @@ class LabelMapper:
     # Undefined behavior issues
     UNDEFINED_BEHAVIOR: Set[str] = {
         # Cppcheck
-        "arrayIndexOutOfBounds", "arrayIndexOutOfBoundsCond",
-        "bufferAccessOutOfBounds", "outOfBounds",
-        "shiftTooManyBits", "shiftTooManyBitsSigned",
-        "integerOverflow", "signConversion",
-        "invalidPointerCast", "CastIntegerToAddressAtReturn",
-        "uninitStructMember", "uninitdata",
+        "arrayIndexOutOfBounds",
+        "arrayIndexOutOfBoundsCond",
+        "bufferAccessOutOfBounds",
+        "outOfBounds",
+        "shiftTooManyBits",
+        "shiftTooManyBitsSigned",
+        "integerOverflow",
+        "signConversion",
+        "invalidPointerCast",
+        "CastIntegerToAddressAtReturn",
+        "uninitStructMember",
+        "uninitdata",
         # Clang
         "clang-analyzer-core.UndefinedBinaryOperatorResult",
         "clang-analyzer-core.uninitialized",
@@ -46,13 +60,21 @@ class LabelMapper:
     # Correctness issues (logic errors)
     CORRECTNESS: Set[str] = {
         # Cppcheck
-        "wrongPrintfScanfArgNum", "invalidFunctionArg", "invalidFunctionArgBool",
-        "unreachableCode", "duplicateBreak",
-        "wrongMathCall", "exceptThrowInDestructor",
-        "assertWithSideEffect", "comparePointers",
-        "moduloAlwaysTrueFalse", "incorrectLogicOperator",
-        "oppositeInnerCondition", "identicalConditionAfterEarlyExit",
-        "duplicateExpression", "duplicateConditionalAssign",
+        "wrongPrintfScanfArgNum",
+        "invalidFunctionArg",
+        "invalidFunctionArgBool",
+        "unreachableCode",
+        "duplicateBreak",
+        "wrongMathCall",
+        "exceptThrowInDestructor",
+        "assertWithSideEffect",
+        "comparePointers",
+        "moduloAlwaysTrueFalse",
+        "incorrectLogicOperator",
+        "oppositeInnerCondition",
+        "identicalConditionAfterEarlyExit",
+        "duplicateExpression",
+        "duplicateConditionalAssign",
         # Clang
         "clang-analyzer-deadcode.DeadStores",
         "bugprone-branch-clone",
@@ -64,10 +86,16 @@ class LabelMapper:
     # Performance issues
     PERFORMANCE: Set[str] = {
         # Cppcheck
-        "passedByValue", "constParameter", "constVariable",
-        "postfixOperator", "useStlAlgorithm",
-        "unreadVariable", "unusedFunction", "unusedStructMember",
-        "redundantAssignment", "redundantCopy",
+        "passedByValue",
+        "constParameter",
+        "constVariable",
+        "postfixOperator",
+        "useStlAlgorithm",
+        "unreadVariable",
+        "unusedFunction",
+        "unusedStructMember",
+        "redundantAssignment",
+        "redundantCopy",
         # Clang
         "performance-unnecessary-copy-initialization",
         "performance-unnecessary-value-param",
@@ -79,10 +107,15 @@ class LabelMapper:
     # Style and readability issues
     STYLE: Set[str] = {
         # Cppcheck
-        "variableScope", "functionStatic", "functionConst",
-        "clarifyCalculation", "clarifyCondition",
-        "redundantCondition", "redundantAssignment",
-        "unusedLabel", "exceptDeallocThrow",
+        "variableScope",
+        "functionStatic",
+        "functionConst",
+        "clarifyCalculation",
+        "clarifyCondition",
+        "redundantCondition",
+        "redundantAssignment",
+        "unusedLabel",
+        "exceptDeallocThrow",
         # Clang
         "readability-identifier-naming",
         "readability-braces-around-statements",
@@ -93,8 +126,7 @@ class LabelMapper:
         "cppcoreguidelines-avoid-magic-numbers",
     }
 
-    def map_to_groups(self, cppcheck_labels: Dict[str, int],
-                      clang_labels: Dict[str, int]) -> Dict[str, bool]:
+    def map_to_groups(self, cppcheck_labels: Dict[str, int], clang_labels: Dict[str, int]) -> Dict[str, bool]:
         """
         Maps specific issue labels to high-level category flags.
 

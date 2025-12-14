@@ -6,7 +6,7 @@ def start_server(callback: Callable[[str], Any]) -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     # nosec B104: Binding to all interfaces is required for Docker networking
-    sock.bind(('0.0.0.0', 8080))  # nosec B104
+    sock.bind(("0.0.0.0", 8080))  # nosec B104
     sock.listen()
 
     print("TCP Server listening...")

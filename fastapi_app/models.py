@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
-from typing import Optional, Dict, Annotated, List
 from datetime import datetime
+from typing import Annotated, List, Optional
+
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
 

@@ -1,19 +1,21 @@
-from typing import Callable, Optional, Dict, Any
+from typing import Any, Callable, Dict, Optional
+
 import questionary
 
-
 # Define the visual style (Underlining the selected option)
-custom_style = questionary.Style([
-    ('qmark', 'fg:#E91E63 bold'),       # Token for the question mark
-    ('question', 'bold'),               # Token for the question text
-    ('answer', 'fg:#2196f3 bold'),      # Token for the answer
-    ('pointer', 'fg:#673ab7 bold'),     # Token for the pointer
-    ('highlighted', 'fg:#673ab7 bold underline'),  # <--- UNDERLINE SELECTED
-    ('selected', 'fg:#cc5454'),         # Token for the selected item
-    ('separator', 'fg:#cc5454'),
-    ('instruction', ''),                # Token for the instruction
-    ('text', ''),                       # Token for the plain text
-])
+custom_style = questionary.Style(
+    [
+        ("qmark", "fg:#E91E63 bold"),  # Token for the question mark
+        ("question", "bold"),  # Token for the question text
+        ("answer", "fg:#2196f3 bold"),  # Token for the answer
+        ("pointer", "fg:#673ab7 bold"),  # Token for the pointer
+        ("highlighted", "fg:#673ab7 bold underline"),  # <--- UNDERLINE SELECTED
+        ("selected", "fg:#cc5454"),  # Token for the selected item
+        ("separator", "fg:#cc5454"),
+        ("instruction", ""),  # Token for the instruction
+        ("text", ""),  # Token for the plain text
+    ]
+)
 
 
 class CommandNode:
@@ -52,11 +54,7 @@ class CommandNode:
         new_params = {}
         for key, default in self.param_set.items():
             # Use text input with default value
-            val = questionary.text(
-                f"Enter {key}:",
-                default=str(default),
-                style=custom_style
-            ).ask()
+            val = questionary.text(f"Enter {key}:", default=str(default), style=custom_style).ask()
 
             if val is not None:
                 new_params[key] = val
