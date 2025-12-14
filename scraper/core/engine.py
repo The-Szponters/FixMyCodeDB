@@ -8,6 +8,7 @@ import json
 
 from github import Github, Auth, GithubException
 from scraper.config.config_utils import load_config
+from scraper.labeling.labeler import Labeler
 
 API_URL = os.getenv("API_URL", "http://fastapi:8000")
 
@@ -32,7 +33,7 @@ def run_scraper(config_path: str) -> None:
         logging.warning("No valid repositories found in config.")
         return
 
-    token = os.getenv("GITHUB_TOKEN")
+    token = ""  # os.getenv("GITHUB_TOKEN")
     if not token:
         logging.warning("GITHUB_TOKEN not set. Rate limits will be strict.")
         g = Github()
@@ -88,14 +89,10 @@ def find_corresponding_file(
 def format_context(header: str, implementation: str) -> str:
     output = []
     if header.strip():
-        output.append("[HEADER]")
         output.append(header.strip())
-        output.append("[/HEADER]")
 
     if implementation.strip():
-        output.append("[IMPLEMENTATION]")
         output.append(implementation.strip())
-        output.append("[/IMPLEMENTATION]")
 
     return "\n".join(output)
 
@@ -134,6 +131,10 @@ def save_payload_to_file(
 
 def process_repository(github_client: Any, repo_config: Any) -> None:
     logging.info(f"Processing repository: {repo_config.url}")
+
+    # Initialize labeler for automatic code analysis with config-based mapping
+    config_path = os.path.join(os.path.dirname(__file__), "..", "labels_config.json")
+    labeler = Labeler(timeout=30, config_path=config_path)
 
     try:
         repo_slug = get_repo_slug(repo_config.url)
@@ -260,6 +261,20 @@ def process_repository(github_client: Any, repo_config: Any) -> None:
                 if full_code_before == full_code_fixed:
                     continue
 
+                # ===== LABELING STAGE =====
+                logging.info(f"Analyzing code for labeling: {sha[:7]} / {base_name}")
+                try:
+                    labels = labeler.analyze(full_code_before, full_code_fixed)
+
+                    # Skip if no issues were found (empty cppcheck list after diff)
+                    if not labels.get("cppcheck"):
+                        logging.info(f"Skipping {sha[:7]} - no cppcheck issues found after diff")
+                        continue
+
+                except Exception as e:
+                    logging.warning(f"Labeling failed for {sha[:7]}: {e}. Skipping.")
+                    continue
+
                 payload = {
                     "code_original": full_code_before,
                     "code_fixed": full_code_fixed,
@@ -272,6 +287,7 @@ def process_repository(github_client: Any, repo_config: Any) -> None:
                         )
                     },
                     "ingest_timestamp": datetime.now().isoformat(),
+                    "labels": labels,
                 }
 
                 save_payload_to_file(payload)

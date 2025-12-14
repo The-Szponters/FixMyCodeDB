@@ -9,7 +9,7 @@ def manage_infrastructure(command, working_dir):
     Runs docker compose commands securely using subprocess.
     """
     try:
-        cmd = ["docker", "compose"] + command.split()
+        cmd = ["sudo", "docker", "compose"] + command.split()
 
         subprocess.run(
             cmd,

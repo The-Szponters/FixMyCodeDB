@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y \
     nano \
     vim \
     tzdata \
+    cppcheck \
+    clang-tidy \
     && rm -rf /var/lib/apt/lists/*
 
 # Set timezone to Europe/Warsaw

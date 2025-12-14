@@ -14,12 +14,15 @@ FILTER_PARAMS = {
     "repo_url": "",
     "commit_hash": "",
     "code_hash": "",
-    # Boolean flags (User types 'true', '1', or leaves empty)
-    "has_memory_errors": "",
-    "has_undefined_behavior": "",
-    "has_correctness_issues": "",
-    "has_performance_issues": "",
-    "has_style_issues": ""
+    # Boolean flags matching labels_config.json categories
+    "has_memory_management": "",
+    "has_invalid_access": "",
+    "has_uninitialized": "",
+    "has_concurrency": "",
+    "has_logic_error": "",
+    "has_resource_leak": "",
+    "has_security_portability": "",
+    "has_code_quality_performance": ""
 }
 
 
@@ -40,11 +43,14 @@ def build_api_payload(params):
         mongo_filter["code_hash"] = params["code_hash"]
 
     bool_map = {
-        "has_memory_errors": "labels.groups.memory_errors",
-        "has_undefined_behavior": "labels.groups.undefined_behavior",
-        "has_correctness_issues": "labels.groups.correctness",
-        "has_performance_issues": "labels.groups.performance",
-        "has_style_issues": "labels.groups.style"
+        "has_memory_management": "labels.groups.memory_management",
+        "has_invalid_access": "labels.groups.invalid_access",
+        "has_uninitialized": "labels.groups.uninitialized",
+        "has_concurrency": "labels.groups.concurrency",
+        "has_logic_error": "labels.groups.logic_error",
+        "has_resource_leak": "labels.groups.resource_leak",
+        "has_security_portability": "labels.groups.security_portability",
+        "has_code_quality_performance": "labels.groups.code_quality_performance"
     }
 
     for cli_key, db_key in bool_map.items():
