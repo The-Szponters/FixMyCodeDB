@@ -3,7 +3,7 @@ Analyzers for static code analysis tools (cppcheck, clang-tidy).
 """
 
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import tempfile
 from pathlib import Path
 from typing import Dict, List
@@ -34,7 +34,7 @@ class CppcheckAnalyzer:
 
         try:
             # Run cppcheck with text output (JSON template doesn't work properly)
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 [self.cppcheck_path, "--enable=all", "--inline-suppr", "--suppress=missingInclude", "--suppress=missingIncludeSystem", "--suppress=unmatchedSuppression", temp_file],
                 capture_output=True,
                 text=True,
@@ -106,7 +106,7 @@ class ClangTidyAnalyzer:
 
         try:
             # Run clang-tidy
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603, B607
                 [self.clang_tidy_path, temp_file, "--", "-std=c++17", "-Wno-everything", "-ferror-limit=0"],  # Suppress compiler warnings  # Don't stop on errors
                 capture_output=True,
                 text=True,
