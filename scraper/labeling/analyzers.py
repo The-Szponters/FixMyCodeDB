@@ -2,6 +2,7 @@
 Analyzers for static code analysis tools (cppcheck, clang-tidy).
 """
 
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -34,7 +35,7 @@ class CppcheckAnalyzer:
         try:
             # Run cppcheck with text output (JSON template doesn't work properly)
             result = subprocess.run(
-                ["cppcheck", "--enable=all", "--inline-suppr", "--suppress=missingInclude", "--suppress=missingIncludeSystem", "--suppress=unmatchedSuppression", temp_file],
+                [self.cppcheck_path, "--enable=all", "--inline-suppr", "--suppress=missingInclude", "--suppress=missingIncludeSystem", "--suppress=unmatchedSuppression", temp_file],
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
@@ -82,6 +83,9 @@ class ClangTidyAnalyzer:
 
     def __init__(self, timeout: int = 30):
         self.timeout = timeout
+        self.clang_tidy_path = shutil.which("clang-tidy")
+        if not self.clang_tidy_path:
+            raise RuntimeError("clang-tidy not found in PATH")
 
     def run(self, code: str) -> List[Dict]:
         """
@@ -103,7 +107,7 @@ class ClangTidyAnalyzer:
         try:
             # Run clang-tidy
             result = subprocess.run(
-                ["clang-tidy", temp_file, "--", "-std=c++17", "-Wno-everything", "-ferror-limit=0"],  # Suppress compiler warnings  # Don't stop on errors
+                [self.clang_tidy_path, temp_file, "--", "-std=c++17", "-Wno-everything", "-ferror-limit=0"],  # Suppress compiler warnings  # Don't stop on errors
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,

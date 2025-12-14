@@ -34,7 +34,7 @@ def run_scraper(config_path: str) -> None:
         logging.warning("No valid repositories found in config.")
         return
 
-    token = ""  # os.getenv("GITHUB_TOKEN")
+    token = os.getenv("GITHUB_TOKEN")
     if not token:
         logging.warning("GITHUB_TOKEN not set. Rate limits will be strict.")
         g = Github()
