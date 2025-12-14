@@ -14,6 +14,9 @@ class CppcheckAnalyzer:
 
     def __init__(self, timeout: int = 30):
         self.timeout = timeout
+        self.cppcheck_path = shutil.which("cppcheck")
+        if not self.cppcheck_path:
+            raise RuntimeError("cppcheck not found in PATH")
 
     def run(self, code: str) -> List[Dict]:
         """
