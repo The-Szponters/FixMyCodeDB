@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Body
-from motor.motor_asyncio import AsyncIOMotorClient
-from typing import List, Dict
-from models import CodeEntry
+from typing import Dict, List
+
 import crud
+from fastapi import Body, FastAPI, HTTPException
+from models import CodeEntry
+from motor.motor_asyncio import AsyncIOMotorClient
 
 MONGO_URL = "mongodb://root:example@mongo:27017"
 DB_NAME = "appdb"
@@ -17,6 +18,7 @@ async def lifespan(app: FastAPI):
     yield
     app.mongodb_client.close()
     print("Disconnected from MongoDB")
+
 
 app = FastAPI(title="FixMyCode API", lifespan=lifespan)
 
@@ -57,9 +59,5 @@ async def delete(entry_id: str):
 
 
 @app.post("/entries/query/", response_model=List[CodeEntry])
-async def query_entries(
-    filter: Dict = Body(default={}),
-    sort: Dict = Body(default={}),
-    limit: int = 100
-):
+async def query_entries(filter: Dict = Body(default={}), sort: Dict = Body(default={}), limit: int = 100):
     return await crud.list_entries(app.mongodb, filter, sort, limit)

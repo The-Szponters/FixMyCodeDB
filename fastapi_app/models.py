@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
-from typing import Optional, Dict, Annotated
 from datetime import datetime
+from typing import Annotated, List, Optional
+
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
 
@@ -12,16 +13,18 @@ class RepoInfo(BaseModel):
 
 
 class LabelsGroup(BaseModel):
-    memory_errors: bool = False
-    undefined_behavior: bool = False
-    correctness: bool = False
-    performance: bool = False
-    style: bool = False
+    memory_management: bool = False
+    invalid_access: bool = False
+    uninitialized: bool = False
+    concurrency: bool = False
+    logic_error: bool = False
+    resource_leak: bool = False
+    security_portability: bool = False
+    code_quality_performance: bool = False
 
 
 class Labels(BaseModel):
-    cppcheck: Dict[str, int] = {}
-    clang: Dict[str, int] = {}
+    cppcheck: List[str] = []
     groups: LabelsGroup
 
 

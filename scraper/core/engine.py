@@ -1,13 +1,15 @@
 import hashlib
+import json
 import logging
 import os
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
-import json
 
-from github import Github, Auth, GithubException
+from github import Auth, Github, GithubException
+
 from scraper.config.config_utils import load_config
+from scraper.labeling.labeler import Labeler
 
 API_URL = os.getenv("API_URL", "http://fastapi:8000")
 
@@ -61,11 +63,7 @@ def get_all_repo_files(repo: Any, sha: str) -> List[str]:
         return []
 
 
-def find_corresponding_file(
-    base_file_path: str,
-    target_extensions: List[str],
-    all_repo_files: List[str]
-) -> Optional[str]:
+def find_corresponding_file(base_file_path: str, target_extensions: List[str], all_repo_files: List[str]) -> Optional[str]:
     base_dir = os.path.dirname(base_file_path)
     base_name = os.path.splitext(os.path.basename(base_file_path))[0]
 
@@ -88,22 +86,15 @@ def find_corresponding_file(
 def format_context(header: str, implementation: str) -> str:
     output = []
     if header.strip():
-        output.append("[HEADER]")
         output.append(header.strip())
-        output.append("[/HEADER]")
 
     if implementation.strip():
-        output.append("[IMPLEMENTATION]")
         output.append(implementation.strip())
-        output.append("[/IMPLEMENTATION]")
 
     return "\n".join(output)
 
 
-def save_payload_to_file(
-    payload: Dict[str, Any],
-    output_dir: str = "extracted_data"
-) -> None:
+def save_payload_to_file(payload: Dict[str, Any], output_dir: str = "extracted_data") -> None:
     try:
         os.makedirs(output_dir, exist_ok=True)
 
@@ -114,14 +105,10 @@ def save_payload_to_file(
         readable_payload = payload.copy()
 
         if isinstance(readable_payload.get("code_original"), str):
-            readable_payload["code_original"] = (
-                readable_payload["code_original"].splitlines()
-            )
+            readable_payload["code_original"] = readable_payload["code_original"].splitlines()
 
         if isinstance(readable_payload.get("code_fixed"), str):
-            readable_payload["code_fixed"] = (
-                readable_payload["code_fixed"].splitlines()
-            )
+            readable_payload["code_fixed"] = readable_payload["code_fixed"].splitlines()
 
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(readable_payload, f, indent=4, ensure_ascii=False)
@@ -135,6 +122,10 @@ def save_payload_to_file(
 def process_repository(github_client: Any, repo_config: Any) -> None:
     logging.info(f"Processing repository: {repo_config.url}")
 
+    # Initialize labeler for automatic code analysis with config-based mapping
+    config_path = os.path.join(os.path.dirname(__file__), "..", "labels_config.json")
+    labeler = Labeler(timeout=30, config_path=config_path)
+
     try:
         repo_slug = get_repo_slug(repo_config.url)
         repo = github_client.get_repo(repo_slug)
@@ -144,15 +135,11 @@ def process_repository(github_client: Any, repo_config: Any) -> None:
 
     since_dt = None
     if repo_config.start_date:
-        since_dt = datetime.combine(
-            repo_config.start_date, datetime.min.time()
-        )
+        since_dt = datetime.combine(repo_config.start_date, datetime.min.time())
 
     until_dt = datetime.now()
     if repo_config.end_date:
-        until_dt = datetime.combine(
-            repo_config.end_date, datetime.max.time()
-        )
+        until_dt = datetime.combine(repo_config.end_date, datetime.max.time())
 
     if not since_dt:
         since_dt = datetime(2020, 1, 1)
@@ -164,9 +151,7 @@ def process_repository(github_client: Any, repo_config: Any) -> None:
 
         for commit_wrapper in commits:
             if processed_count >= repo_config.target_record_count:
-                logging.info(
-                    f"Target record count reached for {repo_config.url}"
-                )
+                logging.info(f"Target record count reached for {repo_config.url}")
                 break
 
             msg = commit_wrapper.commit.message
@@ -214,42 +199,26 @@ def process_repository(github_client: Any, repo_config: Any) -> None:
 
                 if path.endswith((".h", ".hpp")):
                     header_path = path
-                    impl_path = find_corresponding_file(
-                        path,
-                        [".cpp", ".cxx", ".cc"],
-                        repo_files_cache
-                    )
+                    impl_path = find_corresponding_file(path, [".cpp", ".cxx", ".cc"], repo_files_cache)
                 else:
                     impl_path = path
-                    header_path = find_corresponding_file(
-                        path,
-                        [".h", ".hpp"],
-                        repo_files_cache
-                    )
+                    header_path = find_corresponding_file(path, [".h", ".hpp"], repo_files_cache)
 
                 h_before = ""
                 if header_path:
-                    h_before = get_github_content(
-                        repo, parent_sha, header_path
-                    )
+                    h_before = get_github_content(repo, parent_sha, header_path)
 
                 h_after = ""
                 if header_path:
-                    h_after = get_github_content(
-                        repo, sha, header_path
-                    )
+                    h_after = get_github_content(repo, sha, header_path)
 
                 cpp_before = ""
                 if impl_path:
-                    cpp_before = get_github_content(
-                        repo, parent_sha, impl_path
-                    )
+                    cpp_before = get_github_content(repo, parent_sha, impl_path)
 
                 cpp_after = ""
                 if impl_path:
-                    cpp_after = get_github_content(
-                        repo, sha, impl_path
-                    )
+                    cpp_after = get_github_content(repo, sha, impl_path)
 
                 if not h_after and not cpp_after:
                     continue
@@ -260,18 +229,27 @@ def process_repository(github_client: Any, repo_config: Any) -> None:
                 if full_code_before == full_code_fixed:
                     continue
 
+                # ===== LABELING STAGE =====
+                logging.info(f"Analyzing code for labeling: {sha[:7]} / {base_name}")
+                try:
+                    labels = labeler.analyze(full_code_before, full_code_fixed)
+
+                    # Skip if no issues were found (empty cppcheck list after diff)
+                    if not labels.get("cppcheck"):
+                        logging.info(f"Skipping {sha[:7]} - no cppcheck issues found after diff")
+                        continue
+
+                except Exception as e:
+                    logging.warning(f"Labeling failed for {sha[:7]}: {e}. Skipping.")
+                    continue
+
                 payload = {
                     "code_original": full_code_before,
                     "code_fixed": full_code_fixed,
                     "code_hash": calculate_hash(full_code_before),
-                    "repo": {
-                        "url": repo_config.url,
-                        "commit_hash": sha,
-                        "commit_date": (
-                            commit_wrapper.commit.author.date.isoformat()
-                        )
-                    },
+                    "repo": {"url": repo_config.url, "commit_hash": sha, "commit_date": (commit_wrapper.commit.author.date.isoformat())},
                     "ingest_timestamp": datetime.now().isoformat(),
+                    "labels": labels,
                 }
 
                 save_payload_to_file(payload)

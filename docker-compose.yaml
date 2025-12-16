@@ -31,6 +31,8 @@ services:
       API_URL: http://fastapi:8000
     ports:
       - "8080:8080"
+    volumes:
+      - ./extracted_data:/app/extracted_data
     networks:
       - backend
 

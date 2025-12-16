@@ -1,7 +1,8 @@
-from cli.loop import run_menu_loop
 import os
 import subprocess  # nosec B404
 import sys
+
+from cli.loop import run_menu_loop
 
 
 def manage_infrastructure(command, working_dir):
@@ -9,15 +10,9 @@ def manage_infrastructure(command, working_dir):
     Runs docker compose commands securely using subprocess.
     """
     try:
-        cmd = ["docker", "compose"] + command.split()
+        cmd = ["sudo", "docker", "compose"] + command.split()
 
-        subprocess.run(
-            cmd,
-            cwd=working_dir,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE
-        )  # nosec B603
+        subprocess.run(cmd, cwd=working_dir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)  # nosec B603
     except subprocess.CalledProcessError as e:
         print(f"\n[!] Error executing Docker command: {' '.join(cmd)}")
         print(f"[!] Docker Output: {e.stderr.decode().strip()}")

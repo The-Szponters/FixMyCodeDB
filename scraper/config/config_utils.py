@@ -1,19 +1,16 @@
 import json
 import logging
-from typing import Optional
 from datetime import date, datetime
-from scraper.config.scraper_config import ScraperConfig, RepoConfig
+from typing import Optional
 
-DEFAULT_FIX_REGEXES = [
-    r"(?i)\bfix(es|ed)?\b",
-    r"(?i)\bbug(s)?\b",
-    r"(?i)\bpatch(ed)?\b"
-]
+from scraper.config.scraper_config import RepoConfig, ScraperConfig
+
+DEFAULT_FIX_REGEXES = [r"(?i)\bfix(es|ed)?\b", r"(?i)\bbug(s)?\b", r"(?i)\bpatch(ed)?\b"]
 
 
 def load_config(file_path: str) -> ScraperConfig:
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
         print(f"Error: File {file_path} not found")
@@ -44,13 +41,7 @@ def load_config(file_path: str) -> ScraperConfig:
         if not regexes:
             regexes = DEFAULT_FIX_REGEXES
 
-        config_obj = RepoConfig(
-            url=url,
-            target_record_count=count,
-            start_date=start_dt,
-            end_date=end_dt,
-            fix_regexes=regexes
-        )
+        config_obj = RepoConfig(url=url, target_record_count=count, start_date=start_dt, end_date=end_dt, fix_regexes=regexes)
         repo_configs.append(config_obj)
 
     return ScraperConfig(repositories=repo_configs)
