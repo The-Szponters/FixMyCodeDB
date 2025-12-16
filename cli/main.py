@@ -36,8 +36,10 @@ def main():
     except KeyboardInterrupt:
         print("\nInterrupted by user.")
     finally:
-        print("Stopping FixMyCodeDB Infrastructure...")
-        manage_infrastructure("down", project_root)
+        print("Stopping app services (keeping MongoDB running)...")
+        manage_infrastructure("stop fastapi scraper", project_root)
+        print("MongoDB left running. To stop it: docker compose stop mongo")
+
         print("Exiting. Goodbye!")
 
 

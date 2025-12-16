@@ -5,6 +5,7 @@ import crud
 from fastapi import Body, FastAPI, HTTPException
 from models import CodeEntry
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import DuplicateKeyError, WriteError
 
 MONGO_URL = "mongodb://root:example@mongo:27017"
 DB_NAME = "appdb"
@@ -25,8 +26,13 @@ app = FastAPI(title="FixMyCode API", lifespan=lifespan)
 
 @app.post("/entries/", response_model=Dict[str, str], status_code=201)
 async def create(entry: CodeEntry):
-    entry_id = await crud.create_entry(app.mongodb, entry)
-    return {"id": entry_id}
+    try:
+        entry_id = await crud.create_entry(app.mongodb, entry)
+        return {"id": entry_id}
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="Duplicate entry (code_hash already exists)")
+    except WriteError as e:
+        raise HTTPException(status_code=422, detail=f"MongoDB write failed: {e}")
 
 
 @app.get("/entries/{entry_id}", response_model=CodeEntry)
