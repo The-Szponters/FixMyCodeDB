@@ -1,3 +1,4 @@
+import logging
 import socket
 from typing import Any, Callable, Optional
 
@@ -12,8 +13,8 @@ def send_progress(current: int, total: int, commit_sha: str) -> None:
         try:
             msg = f"PROGRESS: {current}/{total} (commit: {commit_sha})\n"
             _current_conn.sendall(msg.encode())
-        except Exception:
-            pass  # Ignore send errors
+        except OSError as e:
+            logging.debug(f"Failed to send progress update: {e}")
 
 
 def start_server(callback: Callable[[str, Any], Any]) -> None:
