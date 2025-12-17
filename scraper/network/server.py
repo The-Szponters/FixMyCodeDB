@@ -8,7 +8,6 @@ _current_conn: Optional[socket.socket] = None
 
 def send_progress(current: int, total: int, commit_sha: str) -> None:
     """Send progress update to connected client."""
-    global _current_conn
     if _current_conn:
         try:
             msg = f"PROGRESS: {current}/{total} (commit: {commit_sha})\n"

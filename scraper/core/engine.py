@@ -266,7 +266,7 @@ def process_repository(github_client: Any, repo_config: Any, progress_callback=N
                     if not labels.get("cppcheck"):
                         logging.info(f"Skipping {sha[:7]} - no cppcheck issues found after diff")
                         continue
-                    
+
                     # Provide an empty object when no clang details are available.
                     if isinstance(labels, dict):
                         labels.setdefault("clang", {})
@@ -294,7 +294,7 @@ def process_repository(github_client: Any, repo_config: Any, progress_callback=N
                 logging.info(f"Inserted entry into DB: id={inserted_id}")
                 processed_count += 1
                 logging.info(f"[READY] extracted+inserted: {sha[:7]} / {base_name}")
-                
+
                 if progress_callback:
                     progress_callback(processed_count, target_count, sha[:7])
 

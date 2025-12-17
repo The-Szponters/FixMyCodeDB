@@ -122,7 +122,6 @@ def do_scrape(params):
             return
         print(f"Received response from scraper: {response.decode()}")
 
-
         s.settimeout(3600)  # 1 hour timeout for long scrapes
         buffer = ""
         while True:
@@ -130,7 +129,7 @@ def do_scrape(params):
             if not response:
                 print("Error: Connection closed by scraper.")
                 break
-            
+
             buffer += response.decode()
 
             while "\n" in buffer:
