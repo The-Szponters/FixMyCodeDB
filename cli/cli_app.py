@@ -122,14 +122,31 @@ def do_scrape(params):
             return
         print(f"Received response from scraper: {response.decode()}")
 
-        # Now wait for the final completion message
+
         s.settimeout(3600)  # 1 hour timeout for long scrapes
-        response = s.recv(4096)
-        if not response:
-            print("Error: No response from scraper.")
-            s.close()
-            return
-        print(f"Scraper finished: {response.decode()}")
+        buffer = ""
+        while True:
+            response = s.recv(4096)
+            if not response:
+                print("Error: Connection closed by scraper.")
+                break
+            
+            buffer += response.decode()
+
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n", 1)
+                line = line.strip()
+                if line.startswith("PROGRESS:"):
+                    print(f"\r{line}", end="", flush=True)
+                elif line.startswith("ACK: Finished"):
+                    print(f"\nScraper finished: {line}")
+                    break
+            else:
+                if "ACK: Finished" in buffer:
+                    print(f"\nScraper finished: {buffer.strip()}")
+                    break
+                continue
+            break
 
     except socket.gaierror:
         print(f"Error: Could not resolve scraper address '{SCRAPER_ADDR}'. Is the 'scraper' container running?")

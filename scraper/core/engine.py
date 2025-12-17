@@ -28,7 +28,7 @@ def get_repo_slug(url: str) -> str:
     raise ValueError(f"Invalid GitHub URL: {url}")
 
 
-def run_scraper(config_path: str) -> None:
+def run_scraper(config_path: str, progress_callback=None) -> None:
     logging.info(f"Starting scraper with config: {config_path}")
 
     config = load_config(config_path)
@@ -45,7 +45,7 @@ def run_scraper(config_path: str) -> None:
         g = Github(auth=auth)
 
     for repo_config in config.repositories:
-        process_repository(g, repo_config)
+        process_repository(g, repo_config, progress_callback)
 
 
 def get_github_content(repo: Any, sha: str, path: str) -> str:
@@ -146,7 +146,7 @@ def insert_payload_to_db(payload: Dict[str, Any]) -> Optional[str]:
         return None
 
 
-def process_repository(github_client: Any, repo_config: Any) -> None:
+def process_repository(github_client: Any, repo_config: Any, progress_callback=None) -> None:
     logging.info(f"Processing repository: {repo_config.url}")
 
     # Initialize labeler for automatic code analysis with config-based mapping
@@ -172,6 +172,7 @@ def process_repository(github_client: Any, repo_config: Any) -> None:
         since_dt = datetime(2020, 1, 1)
 
     processed_count = 0
+    target_count = repo_config.target_record_count
 
     try:
         commits = repo.get_commits(since=since_dt, until=until_dt)
@@ -293,6 +294,9 @@ def process_repository(github_client: Any, repo_config: Any) -> None:
                 logging.info(f"Inserted entry into DB: id={inserted_id}")
                 processed_count += 1
                 logging.info(f"[READY] extracted+inserted: {sha[:7]} / {base_name}")
+                
+                if progress_callback:
+                    progress_callback(processed_count, target_count, sha[:7])
 
     except GithubException as e:
         logging.error(f"GitHub API Error for {repo_config.url}: {e}")
