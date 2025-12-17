@@ -1,10 +1,14 @@
 from contextlib import asynccontextmanager
+import json
 from typing import Dict, List
 
 import crud
 from fastapi import Body, FastAPI, HTTPException
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import StreamingResponse
 from models import CodeEntry
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import DuplicateKeyError, WriteError
 
 MONGO_URL = "mongodb://root:example@mongo:27017"
 DB_NAME = "appdb"
@@ -25,8 +29,26 @@ app = FastAPI(title="FixMyCode API", lifespan=lifespan)
 
 @app.post("/entries/", response_model=Dict[str, str], status_code=201)
 async def create(entry: CodeEntry):
-    entry_id = await crud.create_entry(app.mongodb, entry)
-    return {"id": entry_id}
+    try:
+        entry_id = await crud.create_entry(app.mongodb, entry)
+        return {"id": entry_id}
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="Duplicate entry (code_hash already exists)")
+    except WriteError as e:
+        raise HTTPException(status_code=422, detail=f"MongoDB write failed: {e}")
+
+
+@app.get("/entries/export-all")
+async def export_all_entries():
+    cursor = app.mongodb["code_entries"].find({}).sort("_id", 1)
+
+    async def generate():
+        async for doc in cursor:
+            entry = CodeEntry(**doc)
+            payload = jsonable_encoder(entry, by_alias=True)
+            yield json.dumps(payload, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
 
 
 @app.get("/entries/{entry_id}", response_model=CodeEntry)

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
@@ -25,6 +25,7 @@ class LabelsGroup(BaseModel):
 
 class Labels(BaseModel):
     cppcheck: List[str] = []
+    clang: Dict[str, Any] = Field(default_factory=dict)
     groups: LabelsGroup
 
 

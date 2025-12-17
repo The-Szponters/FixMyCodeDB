@@ -6,6 +6,8 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
+import requests
+
 from github import Auth, Github, GithubException
 
 from scraper.config.config_utils import load_config
@@ -26,7 +28,7 @@ def get_repo_slug(url: str) -> str:
     raise ValueError(f"Invalid GitHub URL: {url}")
 
 
-def run_scraper(config_path: str) -> None:
+def run_scraper(config_path: str, progress_callback=None) -> None:
     logging.info(f"Starting scraper with config: {config_path}")
 
     config = load_config(config_path)
@@ -43,7 +45,7 @@ def run_scraper(config_path: str) -> None:
         g = Github(auth=auth)
 
     for repo_config in config.repositories:
-        process_repository(g, repo_config)
+        process_repository(g, repo_config, progress_callback)
 
 
 def get_github_content(repo: Any, sha: str, path: str) -> str:
@@ -119,7 +121,32 @@ def save_payload_to_file(payload: Dict[str, Any], output_dir: str = "extracted_d
         logging.error(f"Failed to save payload locally: {e}")
 
 
-def process_repository(github_client: Any, repo_config: Any) -> None:
+def insert_payload_to_db(payload: Dict[str, Any]) -> Optional[str]:
+    """Insert a single payload into MongoDB via the FastAPI service.
+
+    Returns:
+        Inserted entry id (as string) on success, otherwise None.
+    """
+    endpoint = f"{API_URL}/entries/"
+    try:
+        resp = requests.post(endpoint, json=payload, timeout=15)
+        if resp.status_code == 201:
+            data = resp.json() if resp.content else {}
+            return data.get("id")
+
+        # Duplicate key is treated as a non-fatal condition.
+        if resp.status_code == 409:
+            logging.info("Entry already exists (duplicate code_hash). Skipping DB insert.")
+            return None
+
+        logging.warning(f"DB insert failed: HTTP {resp.status_code}: {resp.text}")
+        return None
+    except requests.exceptions.RequestException as e:
+        logging.warning(f"DB insert request failed: {e}")
+        return None
+
+
+def process_repository(github_client: Any, repo_config: Any, progress_callback=None) -> None:
     logging.info(f"Processing repository: {repo_config.url}")
 
     # Initialize labeler for automatic code analysis with config-based mapping
@@ -145,6 +172,7 @@ def process_repository(github_client: Any, repo_config: Any) -> None:
         since_dt = datetime(2020, 1, 1)
 
     processed_count = 0
+    target_count = repo_config.target_record_count
 
     try:
         commits = repo.get_commits(since=since_dt, until=until_dt)
@@ -239,6 +267,10 @@ def process_repository(github_client: Any, repo_config: Any) -> None:
                         logging.info(f"Skipping {sha[:7]} - no cppcheck issues found after diff")
                         continue
 
+                    # Provide an empty object when no clang details are available.
+                    if isinstance(labels, dict):
+                        labels.setdefault("clang", {})
+
                 except Exception as e:
                     logging.warning(f"Labeling failed for {sha[:7]}: {e}. Skipping.")
                     continue
@@ -254,8 +286,17 @@ def process_repository(github_client: Any, repo_config: Any) -> None:
 
                 save_payload_to_file(payload)
 
+                inserted_id = insert_payload_to_db(payload)
+                if not inserted_id:
+                    logging.info(f"[SKIP] duplicate or insert failed (not counted): {sha[:7]} / {base_name}")
+                    continue
+
+                logging.info(f"Inserted entry into DB: id={inserted_id}")
                 processed_count += 1
-                logging.info(f"[READY] extracted: {sha[:7]} / {base_name}")
+                logging.info(f"[READY] extracted+inserted: {sha[:7]} / {base_name}")
+
+                if progress_callback:
+                    progress_callback(processed_count, target_count, sha[:7])
 
     except GithubException as e:
         logging.error(f"GitHub API Error for {repo_config.url}: {e}")

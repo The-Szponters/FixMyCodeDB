@@ -44,8 +44,10 @@ var schemaValidator = {
         bsonType: "object",
         required: ["code_original", "code_hash", "repo", "ingest_timestamp", "labels"],
         properties: {
-            code_original: { bsonType: "string" },
-            code_fixed: { bsonType: ["string", "null"] },
+            // Scraper stores code as strings in DB payload
+            // Accept both shapes.
+            code_original: { bsonType: ["string", "array"], items: { bsonType: "string" } },
+            code_fixed: { bsonType: ["string", "array", "null"], items: { bsonType: "string" } },
             // Enforce SHA-256 Hex string format
             code_hash: { bsonType: "string", pattern: "^[a-fA-F0-9]{64}$" },
             repo: {
@@ -62,16 +64,21 @@ var schemaValidator = {
                 bsonType: "object",
                 required: ["cppcheck", "clang", "groups"],
                 properties: {
-                    cppcheck: { bsonType: "object" },
+                    // Labeler returns a list of issue IDs (strings).
+                    cppcheck: { bsonType: "array", items: { bsonType: "string" } },
                     clang: { bsonType: "object" },
                     groups: {
                         bsonType: "object",
                         properties: {
-                            memory_errors: { bsonType: "bool" },
-                            undefined_behavior: { bsonType: "bool" },
-                            correctness: { bsonType: "bool" },
-                            performance: { bsonType: "bool" },
-                            style: { bsonType: "bool" }
+                            // Keys follow scraper/labels_config.json and scraper/labeling/labeler.py
+                            memory_management: { bsonType: "bool" },
+                            invalid_access: { bsonType: "bool" },
+                            uninitialized: { bsonType: "bool" },
+                            concurrency: { bsonType: "bool" },
+                            logic_error: { bsonType: "bool" },
+                            resource_leak: { bsonType: "bool" },
+                            security_portability: { bsonType: "bool" },
+                            code_quality_performance: { bsonType: "bool" }
                         }
                     }
                 }
@@ -112,10 +119,5 @@ coll.createIndex({ code_hash: 1 }, { unique: true });
 
 coll.createIndex({ "repo.url": 1 });
 coll.createIndex({ "repo.commit_hash": 1 });
-
-coll.createIndex({
-    "labels.groups.memory_errors": 1,
-    "labels.groups.undefined_behavior": 1
-});
 
 print("--- Initialization Complete ---");

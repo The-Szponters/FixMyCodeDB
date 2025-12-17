@@ -48,3 +48,6 @@ __pycache__/
 
 .mypy_cache/
 .pytest_cache/
+
+# exported files
+exported_files
