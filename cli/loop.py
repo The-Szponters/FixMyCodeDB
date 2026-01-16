@@ -1,10 +1,19 @@
+"""
+Interactive menu loop for the CLI application.
+Uses questionary for interactive command selection.
+"""
+
 import questionary
 
 from cli.cli_app import CLIApp
 from cli.command_tree import CommandNode, custom_style
 
 
-def run_menu_loop():
+def run_menu_loop() -> None:
+    """
+    Run the interactive menu loop.
+    Allows users to navigate through command tree and execute commands.
+    """
     app = CLIApp()
     current_node = app.root
 
@@ -13,12 +22,18 @@ def run_menu_loop():
 
         # Option A: If this node is executable, offer to run it
         if current_node.is_command and current_node != app.root:
-            choices.append(questionary.Choice(title=f"▶ Run '{current_node.name}'", value="EXECUTE_CURRENT"))
+            choices.append(questionary.Choice(
+                title=f"▶ Run '{current_node.name}'",
+                value="EXECUTE_CURRENT"
+            ))
             choices.append(questionary.Separator())
 
         # Option B: List Children (Sub-commands)
         for child_name in current_node.children:
-            choices.append(questionary.Choice(title=child_name, value=current_node.children[child_name]))
+            choices.append(questionary.Choice(
+                title=child_name,
+                value=current_node.children[child_name]
+            ))
 
         # Option C: Navigation (Back/Exit)
         choices.append(questionary.Separator())
@@ -28,13 +43,16 @@ def run_menu_loop():
         else:
             choices.append(questionary.Choice(title="Exit", value="EXIT"))
 
-        # 2. Display the Menu
-        # The 'pointer' and 'highlighted' style handles the arrow keys and underlining
+        # Display the Menu
         selection = questionary.select(
-            message=f"Location: {get_breadcrumbs(current_node)}", choices=choices, style=custom_style, use_indicator=True, instruction="(Use arrow keys)"  # Shows the arrow >
+            message=f"Location: {get_breadcrumbs(current_node)}",
+            choices=choices,
+            style=custom_style,
+            use_indicator=True,
+            instruction="(Use arrow keys)"
         ).ask()
 
-        # 3. Handle Selection logic
+        # Handle Selection logic
         if selection == "EXIT":
             print("Goodbye.")
             break
@@ -50,10 +68,20 @@ def run_menu_loop():
             current_node = selection
 
 
-def get_breadcrumbs(node):
+def get_breadcrumbs(node: CommandNode) -> str:
+    """
+    Generate breadcrumb path string for the current node.
+
+    Args:
+        node: Current command node
+
+    Returns:
+        Breadcrumb path string (e.g., "scrape / config")
+    """
     path = []
     curr = node
     while curr and curr.name != "root":
         path.append(curr.name)
         curr = curr.parent
     return " / ".join(reversed(path)) or "Root"
+

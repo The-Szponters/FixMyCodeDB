@@ -1,15 +1,26 @@
+"""
+CLI Application - Command Tree Setup and Action Handlers
+
+This module defines the CLI command structure and action implementations
+for both interactive and argument-parser modes.
+"""
+
+import csv
 import json
 import os
 import socket
 from pathlib import Path
+from typing import Any, Dict
 
 import requests
+import questionary
 
-from cli.command_tree import CommandTree
+from cli.command_tree import CommandTree, custom_style
+from cli.handlers import CommandHandler
 
 API_BASE = os.getenv("API_URL", "http://localhost:8000")
 SCRAPER_ADDR = os.getenv("SCRAPER_ADDR", "127.0.0.1")
-SCRAPER_PORT = os.getenv("SCRAPER_PORT", 8080)
+SCRAPER_PORT = int(os.getenv("SCRAPER_PORT", "8080"))
 
 FILTER_PARAMS = {
     "limit": "100",
@@ -27,8 +38,11 @@ FILTER_PARAMS = {
     "has_code_quality_performance": "",
 }
 
+# Initialize shared handler
+_handler = CommandHandler(api_url=API_BASE)
 
-def build_api_payload(params):
+
+def build_api_payload(params: Dict[str, Any]) -> Dict:
     """
     Converts flat CLI params into a nested MongoDB/FastAPI query object.
     Removes empty keys so we don't filter by "" (which would match nothing).
@@ -65,16 +79,14 @@ def build_api_payload(params):
     return mongo_filter
 
 
-def do_import(params):
+def do_import(params: Dict[str, Any]) -> None:
+    """Import data from database with filters."""
     print(f"\n[*] Connecting to API at {API_BASE}...")
 
-    # This turns flat CLI params ("has_memory_errors") into nested DB keys ("labels.groups...")
     query_filter = build_api_payload(params)
-
     limit = int(params.get("limit", 100))
 
     payload = {"filter": query_filter, "limit": limit, "sort": {}}
-
     endpoint = f"{API_BASE}/entries/query/"
 
     try:
@@ -103,51 +115,241 @@ def do_import(params):
         print(f"Unexpected Error: {e}")
 
 
-def do_scrape(params):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    filename = params.get("config_file")
+def do_scrape(params: Dict[str, Any]) -> None:
+    """Execute repository scraping."""
+    config_file = params.get("config_file", "config.json")
+    _handler.scan(config_file=config_file, parallel=False)
 
-    try:
-        s.settimeout(10)
-        s.connect((SCRAPER_ADDR, SCRAPER_PORT))
-        s.sendall(f"SCRAPE {filename}".encode())
-        print(f"Sent SCRAPE command to scraper at {SCRAPER_ADDR}:{SCRAPER_PORT} with config '{filename}'")
-        print(f"SCRAPE {filename}")
 
-        # Wait for a confirmation response
-        response = s.recv(4096)
-        if not response:
-            print("Error: No response from scraper.")
-            s.close()
+def do_scrape_parallel(params: Dict[str, Any]) -> None:
+    """Execute parallel repository scraping."""
+    config_file = params.get("config_file", "config.json")
+    _handler.scan(config_file=config_file, parallel=True)
+
+
+def do_label(params: Dict[str, Any]) -> None:
+    """Placeholder for automatic labeling."""
+    print("Automatic labeling is performed during scraping.")
+    print("Use 'label-manual' to manually review and modify labels.")
+
+
+def do_label_manual(params: Dict[str, Any]) -> None:
+    """
+    Interactive manual labeling of database entries.
+    Allows users to review and modify labels for specific records.
+    """
+    print("\n[*] Manual Labeling Mode")
+    print("-" * 40)
+
+    # Get list of entries to review
+    entries = _handler.query(limit=10, display=False)
+    if not entries:
+        print("No entries found in database.")
+        return
+
+    # Let user select an entry
+    choices = []
+    for entry in entries:
+        entry_id = entry.get("_id", "N/A")
+        repo_url = entry.get("repo", {}).get("url", "N/A")
+        cppcheck = entry.get("labels", {}).get("cppcheck", [])
+        label_str = ", ".join(cppcheck[:3]) + ("..." if len(cppcheck) > 3 else "") if cppcheck else "No labels"
+
+        choices.append(questionary.Choice(
+            title=f"{entry_id[:12]}... | {repo_url.split('/')[-1]} | {label_str}",
+            value=entry_id
+        ))
+
+    choices.append(questionary.Choice(title="Enter ID manually", value="MANUAL"))
+    choices.append(questionary.Choice(title="Cancel", value="CANCEL"))
+
+    selection = questionary.select(
+        "Select an entry to label:",
+        choices=choices,
+        style=custom_style
+    ).ask()
+
+    if selection == "CANCEL":
+        return
+
+    if selection == "MANUAL":
+        selection = questionary.text(
+            "Enter record ID:",
+            style=custom_style
+        ).ask()
+        if not selection:
             return
-        print(f"Received response from scraper: {response.decode()}")
 
-        s.settimeout(3600)  # 1 hour timeout for long scrapes
-        buffer = ""
-        while True:
-            response = s.recv(4096)
-            if not response:
-                print("Error: Connection closed by scraper.")
-                break
+    # Fetch the selected entry
+    entry = _handler.get_entry(selection)
+    if not entry:
+        return
 
-            buffer += response.decode()
+    # Display entry details
+    print("\n" + "=" * 60)
+    print(f"Record ID: {entry.get('_id')}")
+    print(f"Repository: {entry.get('repo', {}).get('url')}")
+    print(f"Commit: {entry.get('repo', {}).get('commit_hash')}")
+    print(f"\nCurrent Labels (cppcheck): {entry.get('labels', {}).get('cppcheck', [])}")
+    print(f"\nLabel Groups:")
+    groups = entry.get("labels", {}).get("groups", {})
+    for group, value in groups.items():
+        status = "✓" if value else "✗"
+        print(f"  [{status}] {group}")
+    print("=" * 60)
 
-            while "\n" in buffer:
-                line, buffer = buffer.split("\n", 1)
-                line = line.strip()
-                if line.startswith("PROGRESS:"):
-                    print(f"\r{line}", end="", flush=True)
-                elif line.startswith("ACK: Finished"):
-                    print(f"\nScraper finished: {line}")
-                    break
-            else:
-                if "ACK: Finished" in buffer:
-                    print(f"\nScraper finished: {buffer.strip()}")
-                    break
-                continue
-            break
+    # Ask what to do
+    action = questionary.select(
+        "What would you like to do?",
+        choices=[
+            questionary.Choice(title="Add a cppcheck label", value="ADD"),
+            questionary.Choice(title="Remove a cppcheck label", value="REMOVE"),
+            questionary.Choice(title="Toggle a label group", value="TOGGLE"),
+            questionary.Choice(title="View code", value="VIEW"),
+            questionary.Choice(title="Done", value="DONE"),
+        ],
+        style=custom_style
+    ).ask()
 
-    except socket.gaierror:
+    if action == "ADD":
+        label = questionary.text(
+            "Enter label to add (e.g., 'memleak', 'nullPointer'):",
+            style=custom_style
+        ).ask()
+        if label:
+            _handler.label_manual(selection, label, remove=False)
+
+    elif action == "REMOVE":
+        current_labels = entry.get("labels", {}).get("cppcheck", [])
+        if not current_labels:
+            print("No labels to remove.")
+        else:
+            label = questionary.select(
+                "Select label to remove:",
+                choices=current_labels,
+                style=custom_style
+            ).ask()
+            if label:
+                _handler.label_manual(selection, label, remove=True)
+
+    elif action == "TOGGLE":
+        group = questionary.select(
+            "Select label group to toggle:",
+            choices=list(groups.keys()),
+            style=custom_style
+        ).ask()
+        if group:
+            new_value = not groups.get(group, False)
+            _handler.set_label_group(selection, group, new_value)
+
+    elif action == "VIEW":
+        print("\n--- Original Code (first 50 lines) ---")
+        code = entry.get("code_original", "")
+        lines = code.split("\n")[:50]
+        for i, line in enumerate(lines, 1):
+            print(f"{i:4d} | {line}")
+        if len(code.split("\n")) > 50:
+            print(f"... ({len(code.split(chr(10))) - 50} more lines)")
+
+
+def _safe_filename(value: str) -> str:
+    """Create a safe filename from a string."""
+    return "".join(ch for ch in value if ch.isalnum() or ch in ("-", "_", "."))
+
+
+def do_export_all(params: Dict[str, Any]) -> None:
+    """Export all entries as individual JSON files."""
+    _handler.export_all_files("exported_files")
+
+
+def do_export_json(params: Dict[str, Any]) -> None:
+    """Export entries to a single JSON file."""
+    output = params.get("output_file", "export.json")
+    limit = int(params.get("limit", "1000"))
+    _handler.export_json(output, limit=limit)
+
+
+def do_export_csv(params: Dict[str, Any]) -> None:
+    """Export entries to a CSV file."""
+    output = params.get("output_file", "export.csv")
+    limit = int(params.get("limit", "1000"))
+    _handler.export_csv(output, limit=limit)
+
+
+def do_query(params: Dict[str, Any]) -> None:
+    """Query and display entries from database."""
+    query_filter = build_api_payload(params)
+    limit = int(params.get("limit", 100))
+    _handler.query(query_filter, limit, display=True)
+
+
+class CLIApp(CommandTree):
+    """
+    CLI Application with command tree structure.
+    Defines all available commands and their parameters.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        # Scraping commands
+        self.add_command(
+            "scrape",
+            do_scrape,
+            param_set={"config_file": "config.json"}
+        )
+        self.add_command(
+            "scrape-parallel",
+            do_scrape_parallel,
+            param_set={"config_file": "config.json"}
+        )
+
+        # Import/Query commands
+        self.add_command(
+            "import",
+            do_import,
+            param_set={"sort by": "ingest_timestamp", **FILTER_PARAMS, "target file": "import.json"}
+        )
+        self.add_command(
+            "import-all",
+            do_import,
+            param_set={"target file": "import.json"}
+        )
+        self.add_command(
+            "query",
+            do_query,
+            param_set=FILTER_PARAMS
+        )
+
+        # Export commands
+        self.add_command(
+            "export-all",
+            do_export_all,
+            param_set={}
+        )
+        self.add_command(
+            "export-json",
+            do_export_json,
+            param_set={"output_file": "export.json", "limit": "1000"}
+        )
+        self.add_command(
+            "export-csv",
+            do_export_csv,
+            param_set={"output_file": "export.csv", "limit": "1000"}
+        )
+
+        # Labeling commands
+        self.add_command(
+            "label",
+            do_label,
+            param_set={}
+        )
+        self.add_command(
+            "label-manual",
+            do_label_manual,
+            param_set={}
+        )
+
         print(f"Error: Could not resolve scraper address '{SCRAPER_ADDR}'. Is the 'scraper' container running?")
         s.close()
         return

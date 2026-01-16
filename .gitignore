@@ -51,3 +51,4 @@ __pycache__/
 
 # exported files
 exported_files
+.venv/

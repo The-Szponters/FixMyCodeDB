@@ -1,4 +1,6 @@
 {
+  "tokens": [],
+  "max_workers": 4,
   "repositories": [
     {
       "url": "https://github.com/chromium/chromium",

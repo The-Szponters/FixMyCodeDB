@@ -1,7 +1,8 @@
 import json
 import logging
+import os
 from datetime import date, datetime
-from typing import Optional
+from typing import List, Optional, Tuple
 
 from scraper.config.scraper_config import RepoConfig, ScraperConfig
 
@@ -45,6 +46,55 @@ def load_config(file_path: str) -> ScraperConfig:
         repo_configs.append(config_obj)
 
     return ScraperConfig(repositories=repo_configs)
+
+
+def load_config_with_tokens(file_path: str) -> Tuple[ScraperConfig, List[str], int]:
+    """
+    Load configuration including tokens and max_workers settings.
+
+    Args:
+        file_path: Path to the configuration JSON file
+
+    Returns:
+        Tuple of (ScraperConfig, list of tokens, max_workers)
+    """
+    tokens = []
+    max_workers = 4
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: File {file_path} not found")
+        return ScraperConfig(repositories=[]), tokens, max_workers
+    except json.JSONDecodeError:
+        print(f"Error: File {file_path} contains invalid JSON")
+        return ScraperConfig(repositories=[]), tokens, max_workers
+
+    # Extract tokens from config
+    config_tokens = data.get("tokens", [])
+    if isinstance(config_tokens, list):
+        tokens = [t for t in config_tokens if t and isinstance(t, str)]
+
+    # Fall back to environment variables if no tokens in config
+    if not tokens:
+        env_tokens = os.getenv("GITHUB_TOKENS", "")
+        if env_tokens:
+            tokens = [t.strip() for t in env_tokens.split(",") if t.strip()]
+        else:
+            single_token = os.getenv("GITHUB_TOKEN", "")
+            if single_token:
+                tokens = [single_token]
+
+    # Extract max_workers
+    max_workers = data.get("max_workers", 4)
+    if not isinstance(max_workers, int) or max_workers < 1:
+        max_workers = 4
+
+    # Load repository configs using existing function logic
+    config = load_config(file_path)
+
+    return config, tokens, max_workers
 
 
 def parse_date(date_str: str) -> Optional[date]:
