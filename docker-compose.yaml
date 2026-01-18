@@ -35,8 +35,15 @@ services:
       - "8080:8080"
     volumes:
       - ./extracted_data:/app/extracted_data
+      - ./data:/app/data
+    tmpfs:
+      # RAM disk for temporary file storage (avoid disk I/O bottleneck)
+      # Size: 512MB - adjust based on available RAM and workload
+      - /tmp_ram_scraper:size=512M,mode=1777
     networks:
       - backend
+    # Increase shared memory for multiprocessing
+    shm_size: '256m'
 
 networks:
   backend:

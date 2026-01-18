@@ -215,11 +215,33 @@ def do_export_all(params):
         print(f"Unexpected Error: {e}")
 
 
+def do_scrape_parallel(params):
+    """Run the parallel scraper with TUI dashboard."""
+    try:
+        from scraper.main import run_parallel_scraper
+
+        config_file = params.get("config_file", "scraper/config.json")
+        print(f"Starting parallel scraper with TUI dashboard...")
+        print(f"Using config: {config_file}")
+        print("Press Ctrl+C to stop\n")
+
+        run_parallel_scraper(config_file, with_tui=True)
+
+    except ImportError as e:
+        print(f"Error: Could not import scraper module: {e}")
+        print("Make sure 'rich' is installed: pip install rich")
+    except KeyboardInterrupt:
+        print("\n\nScraper stopped by user.")
+    except Exception as e:
+        print(f"Error running parallel scraper: {e}")
+
+
 class CLIApp(CommandTree):
     def __init__(self):
         super().__init__()
 
         self.add_command("scrape", do_scrape, param_set={"config_file": "config.json"})
+        self.add_command("scrape-parallel", do_scrape_parallel, param_set={"config_file": "scraper/config.json"})
         self.add_command("import", do_import, param_set={"sort by": "ingest_timestamp", **FILTER_PARAMS, "target file": "import.json"})
         self.add_command("import-all", do_import, param_set={"target file": "import.json"})
         self.add_command("export-all", do_export_all, param_set={})
