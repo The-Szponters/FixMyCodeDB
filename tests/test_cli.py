@@ -357,7 +357,14 @@ class TestCommandHandler:
     @patch("cli.handlers.requests")
     def test_label_manual_not_found(self, mock_requests, handler):
         """Test labeling non-existent record."""
-        mock_requests.get.side_effect = Exception("Not found")
+        import requests as real_requests
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.text = "Not found"
+        http_error = real_requests.exceptions.HTTPError(response=mock_response)
+        http_error.response = mock_response
+        mock_requests.get.return_value.raise_for_status.side_effect = http_error
+        mock_requests.exceptions = real_requests.exceptions
 
         result = handler.label_manual("nonexistent_id", "label")
 
@@ -411,6 +418,210 @@ class TestCommandHandler:
         result = handler.set_label_group("test_id", "memory_management", True)
 
         assert result is True
+
+    def test_set_label_group_invalid(self, handler):
+        """Test setting invalid label group."""
+        result = handler.set_label_group("test_id", "invalid_group", True)
+
+        assert result is False
+
+    @patch("cli.handlers.requests")
+    def test_set_label_group_not_found(self, mock_requests, handler):
+        """Test setting label group on non-existent record."""
+        import requests as real_requests
+
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.text = "Not found"
+        http_error = real_requests.exceptions.HTTPError(response=mock_response)
+        http_error.response = mock_response
+        mock_response.raise_for_status.side_effect = http_error
+        mock_requests.put.return_value = mock_response
+        mock_requests.exceptions = real_requests.exceptions
+
+        result = handler.set_label_group("nonexistent_id", "memory_management", True)
+
+        assert result is False
+
+    @patch("cli.handlers.requests")
+    def test_set_label_group_connection_error(self, mock_requests, handler):
+        """Test setting label group with connection error."""
+        import requests as real_requests
+
+        mock_requests.put.side_effect = real_requests.exceptions.ConnectionError()
+        mock_requests.exceptions = real_requests.exceptions
+
+        result = handler.set_label_group("test_id", "memory_management", True)
+
+        assert result is False
+
+    @patch("cli.handlers.requests")
+    def test_get_entry_not_found(self, mock_requests, handler):
+        """Test getting non-existent entry."""
+        import requests as real_requests
+
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        http_error = real_requests.exceptions.HTTPError(response=mock_response)
+        http_error.response = mock_response
+        mock_response.raise_for_status.side_effect = http_error
+        mock_requests.get.return_value = mock_response
+        mock_requests.exceptions = real_requests.exceptions
+
+        entry = handler.get_entry("nonexistent")
+
+        assert entry is None
+
+    @patch("cli.handlers.requests")
+    def test_get_entry_connection_error(self, mock_requests, handler):
+        """Test getting entry with connection error."""
+        import requests as real_requests
+
+        mock_requests.get.side_effect = real_requests.exceptions.ConnectionError()
+        mock_requests.exceptions = real_requests.exceptions
+
+        entry = handler.get_entry("test_id")
+
+        assert entry is None
+
+    @patch("cli.handlers.requests")
+    def test_fetch_entries_connection_error(self, mock_requests, handler):
+        """Test fetching entries with connection error."""
+        import requests as real_requests
+
+        mock_requests.post.side_effect = real_requests.exceptions.ConnectionError()
+        mock_requests.exceptions = real_requests.exceptions
+
+        entries = handler._fetch_entries({}, 10)
+
+        assert entries is None
+
+    @patch("cli.handlers.requests")
+    def test_fetch_entries_http_error(self, mock_requests, handler):
+        """Test fetching entries with HTTP error."""
+        import requests as real_requests
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal error"
+        http_error = real_requests.exceptions.HTTPError(response=mock_response)
+        http_error.response = mock_response
+        mock_response.raise_for_status.side_effect = http_error
+        mock_requests.post.return_value = mock_response
+        mock_requests.exceptions = real_requests.exceptions
+
+        entries = handler._fetch_entries({}, 10)
+
+        assert entries is None
+
+    @patch("cli.handlers.requests")
+    def test_export_all_files_success(self, mock_requests, handler, tmp_path):
+        """Test exporting all files."""
+        # Mock streaming response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.iter_lines.return_value = [
+            '{"_id": "entry1", "code_hash": "abc"}',
+            '{"_id": "entry2", "code_hash": "def"}',
+        ]
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_requests.get.return_value = mock_response
+
+        result = handler.export_all_files(str(tmp_path / "export"))
+
+        assert result is True
+        assert (tmp_path / "export" / "entry1.json").exists()
+        assert (tmp_path / "export" / "entry2.json").exists()
+
+    @patch("cli.handlers.requests")
+    def test_export_all_files_connection_error(self, mock_requests, handler):
+        """Test exporting all files with connection error."""
+        import requests as real_requests
+
+        mock_requests.get.side_effect = real_requests.exceptions.ConnectionError()
+        mock_requests.exceptions = real_requests.exceptions
+
+        result = handler.export_all_files("export_dir")
+
+        assert result is False
+
+    @patch("cli.handlers.socket")
+    def test_scan_success(self, mock_socket, handler):
+        """Test successful scan."""
+        mock_sock = MagicMock()
+        mock_socket.socket.return_value = mock_sock
+
+        # Simulate responses
+        mock_sock.recv.side_effect = [
+            b"ACK: Scraping config.json",
+            b"PROGRESS: 1/10 (commit: abc123)\n",
+            b"ACK: Finished Scraping config.json\n",
+        ]
+
+        result = handler.scan("config.json", parallel=False)
+
+        assert result is True
+        mock_sock.sendall.assert_called()
+
+    @patch("cli.handlers.socket")
+    def test_scan_parallel(self, mock_socket, handler):
+        """Test parallel scan."""
+        mock_sock = MagicMock()
+        mock_socket.socket.return_value = mock_sock
+
+        mock_sock.recv.side_effect = [
+            b"ACK: Parallel scraping config.json",
+            b"RESULT: Completed 4/4 repos, 100 records in 60.0s\n",
+            b"ACK: Finished Parallel Scraping config.json\n",
+        ]
+
+        result = handler.scan("config.json", parallel=True)
+
+        assert result is True
+        # Verify parallel command was sent
+        call_args = mock_sock.sendall.call_args[0][0].decode()
+        assert "SCRAPE_PARALLEL" in call_args
+
+    @patch("cli.handlers.socket")
+    def test_scan_timeout(self, mock_socket, handler):
+        """Test scan timeout."""
+        import socket as real_socket
+
+        mock_sock = MagicMock()
+        mock_socket.socket.return_value = mock_sock
+        mock_socket.timeout = real_socket.timeout
+        mock_sock.connect.side_effect = real_socket.timeout()
+
+        result = handler.scan("config.json")
+
+        assert result is False
+
+    @patch("cli.handlers.socket")
+    def test_scan_connection_refused(self, mock_socket, handler):
+        """Test scan with connection refused."""
+        import socket as real_socket
+
+        mock_sock = MagicMock()
+        mock_socket.socket.return_value = mock_sock
+        mock_socket.gaierror = real_socket.gaierror
+        mock_sock.connect.side_effect = real_socket.gaierror()
+
+        result = handler.scan("config.json")
+
+        assert result is False
+
+    @patch("cli.handlers.socket")
+    def test_scan_no_response(self, mock_socket, handler):
+        """Test scan with no response."""
+        mock_sock = MagicMock()
+        mock_socket.socket.return_value = mock_sock
+        mock_sock.recv.return_value = b""
+
+        result = handler.scan("config.json")
+
+        assert result is False
 
     def test_set_label_group_invalid(self, handler):
         """Test setting invalid label group."""

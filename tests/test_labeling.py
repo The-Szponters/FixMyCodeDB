@@ -61,14 +61,11 @@ class TestConfigMapper:
     def test_nonexistent_config_file(self, tmp_path):
         """Test with non-existent config file."""
         from scraper.labeling.config_mapper import ConfigBasedMapper
+        import pytest
 
-        # Should not raise, but use empty mappings
-        mapper = ConfigBasedMapper(str(tmp_path / "nonexistent.json"))
-
-        groups = mapper.map_to_groups(["memleak"])
-
-        # All groups should be False with no mapping
-        assert all(not v for v in groups.values())
+        # Should raise FileNotFoundError
+        with pytest.raises(FileNotFoundError):
+            ConfigBasedMapper(str(tmp_path / "nonexistent.json"))
 
 
 class TestCppcheckAnalyzer:

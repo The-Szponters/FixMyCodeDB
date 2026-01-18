@@ -337,8 +337,6 @@ class CLIApp(CommandTree):
             do_export_csv,
             param_set={"output_file": "export.csv", "limit": "1000"}
         )
-
-        # Labeling commands
         self.add_command(
             "label",
             do_label,
@@ -349,75 +347,3 @@ class CLIApp(CommandTree):
             do_label_manual,
             param_set={}
         )
-
-        print(f"Error: Could not resolve scraper address '{SCRAPER_ADDR}'. Is the 'scraper' container running?")
-        s.close()
-        return
-    except socket.timeout:
-        print("Error: Scraper did not respond in time.")
-    except Exception as e:
-        print(f"Unexpected Error: {e}")
-    finally:
-        s.close()
-
-
-def do_label(params):
-    print("Labeling...")
-
-
-def _safe_filename(value: str) -> str:
-    return "".join(ch for ch in value if ch.isalnum() or ch in ("-", "_", "."))
-
-
-def do_export_all(params):
-    export_dir = Path("exported_files")
-    export_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"\n[*] Connecting to API at {API_BASE}...")
-
-    endpoint = f"{API_BASE}/entries/export-all"
-    try:
-        with requests.get(endpoint, stream=True, timeout=(10, None)) as response:
-            response.raise_for_status()
-
-            written = 0
-            for line in response.iter_lines(decode_unicode=True):
-                if not line:
-                    continue
-
-                entry = json.loads(line)
-                entry_id = entry.get("_id") or ""
-                code_hash = entry.get("code_hash") or ""
-
-                if entry_id:
-                    name = _safe_filename(str(entry_id))
-                elif code_hash:
-                    name = _safe_filename(str(code_hash))
-                else:
-                    name = f"entry_{written}"
-
-                out_path = export_dir / f"{name}.json"
-                with out_path.open("w", encoding="utf-8") as f:
-                    json.dump(entry, f, indent=2, ensure_ascii=False)
-
-                written += 1
-
-        print(f"Exported {written} entries to {export_dir.as_posix()}/")
-
-    except requests.exceptions.ConnectionError:
-        print(f"Error: Could not connect to {API_BASE}. Is the 'fastapi' container running?")
-    except requests.exceptions.HTTPError as e:
-        print(f"API Error: {e.response.text}")
-    except Exception as e:
-        print(f"Unexpected Error: {e}")
-
-
-class CLIApp(CommandTree):
-    def __init__(self):
-        super().__init__()
-
-        self.add_command("scrape", do_scrape, param_set={"config_file": "config.json"})
-        self.add_command("import", do_import, param_set={"sort by": "ingest_timestamp", **FILTER_PARAMS, "target file": "import.json"})
-        self.add_command("import-all", do_import, param_set={"target file": "import.json"})
-        self.add_command("export-all", do_export_all, param_set={})
-        self.add_command("label", do_label, param_set={})
