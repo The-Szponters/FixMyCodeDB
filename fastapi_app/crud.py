@@ -61,3 +61,31 @@ async def list_entries(db: AsyncIOMotorDatabase, filter_dict: Dict = {}, sort_di
 
     docs = await cursor.to_list(length=limit)
     return [CodeEntry(**doc) for doc in docs]
+
+
+async def add_to_cppcheck_labels(db: AsyncIOMotorDatabase, entry_id: str, labels: List[str]) -> int:
+    """Add labels to the labels.cppcheck array (avoiding duplicates)."""
+    try:
+        oid = ObjectId(entry_id)
+    except Exception:
+        return 0
+
+    result = await db[COLL].update_one(
+        {"_id": oid},
+        {"$addToSet": {"labels.cppcheck": {"$each": labels}}}
+    )
+    return result.modified_count
+
+
+async def remove_from_cppcheck_labels(db: AsyncIOMotorDatabase, entry_id: str, labels: List[str]) -> int:
+    """Remove labels from the labels.cppcheck array."""
+    try:
+        oid = ObjectId(entry_id)
+    except Exception:
+        return 0
+
+    result = await db[COLL].update_one(
+        {"_id": oid},
+        {"$pull": {"labels.cppcheck": {"$in": labels}}}
+    )
+    return result.modified_count
