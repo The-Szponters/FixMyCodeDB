@@ -8,36 +8,95 @@ Supports both interactive mode and one-liner argument-based execution.
 import os
 import subprocess  # nosec B404
 import sys
+import time
+
+import requests
 
 from cli.argparser import parse_args, has_action_args, build_filter_dict
 from cli.handlers import CommandHandler
 from cli.loop import run_menu_loop
 
 
-def manage_infrastructure(command: str, working_dir: str) -> None:
+def manage_infrastructure(command: str, working_dir: str, timeout: int = 300) -> bool:
     """
     Runs docker compose commands securely using subprocess.
 
     Args:
         command: Docker compose command to run
         working_dir: Working directory for the command
+        timeout: Timeout in seconds for the command
+
+    Returns:
+        True on success, False on failure
     """
     try:
         cmd = ["docker", "compose"] + command.split()
-        subprocess.run(
+        # Use Popen for non-blocking execution with progress indication
+        process = subprocess.Popen(
             cmd,
             cwd=working_dir,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
         )  # nosec B603
-    except subprocess.CalledProcessError as e:
-        print(f"\n[!] Error executing Docker command: {' '.join(cmd)}")
-        print(f"[!] Docker Output: {e.stderr.decode().strip()}")
-        sys.exit(1)
+
+        start_time = time.time()
+        while process.poll() is None:
+            elapsed = int(time.time() - start_time)
+            if elapsed > timeout:
+                process.kill()
+                print(f"\n[!] Docker command timed out after {timeout}s")
+                return False
+            print(f"\rDocker: {command}... ({elapsed}s)", end="", flush=True)
+            time.sleep(1)
+
+        print()  # Newline after progress
+        if process.returncode != 0:
+            output = process.stdout.read() if process.stdout else ""
+            print(f"[!] Docker command failed: {' '.join(cmd)}")
+            if output:
+                print(f"[!] Output: {output[:500]}")
+            return False
+        return True
+    except FileNotFoundError:
+        print("[!] Docker not found. Please ensure Docker is installed and in PATH.")
+        return False
     except FileNotFoundError:
         print("\n[!] Error: 'docker' command not found. Is Docker installed and in your PATH?")
-        sys.exit(1)
+        return False
+
+
+def wait_for_api(api_url: str, timeout: int = 60) -> bool:
+    """
+    Wait for the FastAPI service to become available.
+
+    Args:
+        api_url: URL of the API to check
+        timeout: Maximum seconds to wait
+
+    Returns:
+        True if API is available, False if timeout
+    """
+    print(f"Waiting for API at {api_url}...")
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        try:
+            response = requests.get(f"{api_url}/docs", timeout=2)
+            if response.status_code == 200:
+                print("API is ready!")
+                return True
+        except requests.exceptions.ConnectionError:
+            pass
+        except requests.exceptions.Timeout:
+            pass
+
+        time.sleep(1)
+        elapsed = int(time.time() - start_time)
+        print(f"\rWaiting for API... ({elapsed}s)", end="", flush=True)
+
+    print(f"\n[!] API did not become available within {timeout}s")
+    return False
 
 
 def run_cli_command(args) -> int:
@@ -120,7 +179,18 @@ def main() -> None:
     # Start infrastructure unless --no-docker is specified
     if not args.no_docker:
         print("Starting FixMyCodeDB Infrastructure...")
-        manage_infrastructure("up -d --build --wait", project_root)
+        # Use 'up -d --build' without --wait (services don't have health checks)
+        if not manage_infrastructure("up -d --build", project_root):
+            print("[!] Failed to start Docker infrastructure.")
+            print("[!] You can run with --no-docker to skip Docker management.")
+            sys.exit(1)
+
+        # Wait for API to become available
+        if not wait_for_api(args.api_url, timeout=60):
+            print("[!] API service did not start in time.")
+            print("[!] Check Docker logs with: docker compose logs fastapi")
+            sys.exit(1)
+
         print("Infrastructure started successfully.")
 
     try:
