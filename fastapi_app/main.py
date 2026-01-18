@@ -109,11 +109,11 @@ async def delete(entry_id: str):
 async def update_labels(entry_id: str, request: LabelUpdateRequest):
     """
     Add or remove labels from an entry.
-    
+
     Labels can be:
     - Group labels: MemError, LogicError, Concurrency, etc. (mapped to labels.groups.*)
     - Cppcheck labels: Any other string (added to labels.cppcheck array)
-    
+
     Body:
     {
         "add": ["MemError", "customLabel"],
@@ -155,7 +155,7 @@ async def update_labels(entry_id: str, request: LabelUpdateRequest):
     # Apply cppcheck array updates
     if cppcheck_add:
         await crud.add_to_cppcheck_labels(app.mongodb, entry_id, cppcheck_add)
-    
+
     if cppcheck_remove:
         await crud.remove_from_cppcheck_labels(app.mongodb, entry_id, cppcheck_remove)
 
