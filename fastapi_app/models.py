@@ -42,3 +42,9 @@ class CodeEntry(BaseModel):
         populate_by_name=True,
         arbitrary_types_allowed=True,
     )
+
+
+class LabelUpdateRequest(BaseModel):
+    """Request body for adding/removing labels from an entry."""
+    add: List[str] = Field(default_factory=list, description="Labels to add to the entry")
+    remove: List[str] = Field(default_factory=list, description="Labels to remove from the entry")
