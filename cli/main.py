@@ -10,7 +10,7 @@ def manage_infrastructure(command, working_dir):
     Runs docker compose commands securely using subprocess.
     """
     try:
-        cmd = ["sudo", "docker", "compose"] + command.split()
+        cmd = ["docker", "compose"] + command.split()
 
         subprocess.run(cmd, cwd=working_dir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)  # nosec B603
     except subprocess.CalledProcessError as e:
