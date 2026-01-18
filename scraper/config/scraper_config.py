@@ -15,3 +15,4 @@ class RepoConfig:
 @dataclass
 class ScraperConfig:
     repositories: List[RepoConfig]
+    github_token: Optional[str] = None

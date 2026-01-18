@@ -36,13 +36,36 @@ def run_scraper(config_path: str, progress_callback=None) -> None:
         logging.warning("No valid repositories found in config.")
         return
 
-    token = os.getenv("GITHUB_TOKEN")
+    token = config.github_token or os.getenv("GITHUB_TOKEN")
+    if token:
+        token = token.strip()
+
     if not token:
-        logging.warning("GITHUB_TOKEN not set. Rate limits will be strict.")
+        logging.warning("GITHUB_TOKEN not set (config or env). Rate limits will be strict.")
         g = Github()
     else:
         auth = Auth.Token(token)
         g = Github(auth=auth)
+        try:
+            user = g.get_user().login
+            logging.info(f"Authenticated as GitHub user: {user}")
+            rate_limit = g.get_rate_limit()
+            
+            # Handle different PyGithub versions/structures
+            limit_data = None
+            if hasattr(rate_limit, 'core'):
+                limit_data = rate_limit.core
+            elif hasattr(rate_limit, 'rate'):
+                limit_data = rate_limit.rate
+            
+            if limit_data:
+                logging.info(f"Rate Limit: {limit_data.remaining}/{limit_data.limit} (Resets at {limit_data.reset})")
+            else:
+                logging.warning(f"Could not determine rate limit structure from: {type(rate_limit)}")
+
+        except Exception as e:
+            logging.error(f"Authentication check failed: {e}")
+            # Continue even if check failed
 
     for repo_config in config.repositories:
         process_repository(g, repo_config, progress_callback)

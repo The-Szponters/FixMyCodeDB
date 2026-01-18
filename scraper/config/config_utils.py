@@ -44,7 +44,9 @@ def load_config(file_path: str) -> ScraperConfig:
         config_obj = RepoConfig(url=url, target_record_count=count, start_date=start_dt, end_date=end_dt, fix_regexes=regexes)
         repo_configs.append(config_obj)
 
-    return ScraperConfig(repositories=repo_configs)
+    github_token = data.get("github_token")
+
+    return ScraperConfig(repositories=repo_configs, github_token=github_token)
 
 
 def parse_date(date_str: str) -> Optional[date]:

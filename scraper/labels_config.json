@@ -1,5 +1,5 @@
 {
-  "comment": "Konfiguracja mapowania błędów Cppcheck na klasy problemów.",
+  "comment": "Configuration file mapping error classifications to their respective error codes for the scraper tool.",
   "error_classification": {
     "memory_management": [
       "memleak",

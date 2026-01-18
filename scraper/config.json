@@ -1,8 +1,9 @@
 {
+  "github_token": "",
   "repositories": [
     {
-      "url": "https://github.com/chromium/chromium",
-      "target_record_count": 5,
+      "url": "https://github.com/xbmc/xbmc",
+      "target_record_count": 2,
       "fix_regexes": [
         "(?i)\\bbug\\b",
         "(?i)\\bcrash",

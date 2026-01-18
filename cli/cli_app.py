@@ -122,13 +122,16 @@ def do_scrape(params):
             return
         print(f"Received response from scraper: {response.decode()}")
 
-        s.settimeout(3600)  # 1 hour timeout for long scrapes
+        s.settimeout(5)  # Short timeout to allow Ctrl+C to interrupt
         buffer = ""
         while True:
-            response = s.recv(4096)
-            if not response:
-                print("Error: Connection closed by scraper.")
-                break
+            try:
+                response = s.recv(4096)
+                if not response:
+                    print("Error: Connection closed by scraper.")
+                    break
+            except socket.timeout:
+                continue
 
             buffer += response.decode()
 
@@ -153,6 +156,8 @@ def do_scrape(params):
         return
     except socket.timeout:
         print("Error: Scraper did not respond in time.")
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user.")
     except Exception as e:
         print(f"Unexpected Error: {e}")
     finally:
