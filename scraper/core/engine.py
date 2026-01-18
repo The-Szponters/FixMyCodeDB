@@ -50,14 +50,14 @@ def run_scraper(config_path: str, progress_callback=None) -> None:
             user = g.get_user().login
             logging.info(f"Authenticated as GitHub user: {user}")
             rate_limit = g.get_rate_limit()
-            
+
             # Handle different PyGithub versions/structures
             limit_data = None
             if hasattr(rate_limit, 'core'):
                 limit_data = rate_limit.core
             elif hasattr(rate_limit, 'rate'):
                 limit_data = rate_limit.rate
-            
+
             if limit_data:
                 logging.info(f"Rate Limit: {limit_data.remaining}/{limit_data.limit} (Resets at {limit_data.reset})")
             else:
