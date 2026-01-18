@@ -584,39 +584,37 @@ class TestCommandHandler:
         call_args = mock_sock.sendall.call_args[0][0].decode()
         assert "SCRAPE_PARALLEL" in call_args
 
-    @patch("cli.handlers.socket")
-    def test_scan_timeout(self, mock_socket, handler):
+    @patch("cli.handlers.socket.socket")
+    def test_scan_timeout(self, mock_socket_class, handler):
         """Test scan timeout."""
         import socket as real_socket
 
         mock_sock = MagicMock()
-        mock_socket.socket.return_value = mock_sock
-        mock_socket.timeout = real_socket.timeout
-        mock_sock.connect.side_effect = real_socket.timeout()
+        mock_socket_class.return_value = mock_sock
+        mock_sock.connect.side_effect = real_socket.timeout("Connection timed out")
 
         result = handler.scan("config.json")
 
         assert result is False
 
-    @patch("cli.handlers.socket")
-    def test_scan_connection_refused(self, mock_socket, handler):
+    @patch("cli.handlers.socket.socket")
+    def test_scan_connection_refused(self, mock_socket_class, handler):
         """Test scan with connection refused."""
         import socket as real_socket
 
         mock_sock = MagicMock()
-        mock_socket.socket.return_value = mock_sock
-        mock_socket.gaierror = real_socket.gaierror
-        mock_sock.connect.side_effect = real_socket.gaierror()
+        mock_socket_class.return_value = mock_sock
+        mock_sock.connect.side_effect = real_socket.gaierror("Name resolution failed")
 
         result = handler.scan("config.json")
 
         assert result is False
 
-    @patch("cli.handlers.socket")
-    def test_scan_no_response(self, mock_socket, handler):
+    @patch("cli.handlers.socket.socket")
+    def test_scan_no_response(self, mock_socket_class, handler):
         """Test scan with no response."""
         mock_sock = MagicMock()
-        mock_socket.socket.return_value = mock_sock
+        mock_socket_class.return_value = mock_sock
         mock_sock.recv.return_value = b""
 
         result = handler.scan("config.json")

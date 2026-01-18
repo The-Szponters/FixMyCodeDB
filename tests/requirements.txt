@@ -1,0 +1,107 @@
+# ============================================================
+# Test Requirements for FixMyCodeDB
+# ============================================================
+#
+# This file consolidates all dependencies needed to run the
+# complete test suite across all project components:
+# - CLI module
+# - FastAPI module
+# - Scraper module
+# - Labeling module
+#
+# Install with: pip install -r tests/requirements.txt
+# ============================================================
+
+# ===================
+# Testing Framework
+# ===================
+pytest>=9.0.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.23.0
+pytest-mock>=3.12.0
+pytest-timeout>=2.2.0
+
+# ===================
+# CLI Dependencies
+# ===================
+questionary>=2.0.0
+prompt-toolkit>=3.0.40
+requests>=2.31.0
+wcwidth>=0.2.0
+
+# ===================
+# FastAPI Dependencies
+# ===================
+fastapi>=0.109.0
+uvicorn>=0.27.0
+motor>=3.3.0
+pymongo>=4.6.0
+pydantic>=2.5.0
+pydantic-core>=2.14.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+starlette>=0.35.0
+httpx>=0.26.0
+email-validator>=2.1.0
+
+# ===================
+# Scraper Dependencies
+# ===================
+GitPython>=3.1.40
+PyGithub>=2.1.0
+PyDriller>=2.5
+requests>=2.31.0
+PyYAML>=6.0.0
+lizard>=1.17.0
+
+# ===================
+# Labeling Dependencies
+# ===================
+# (cppcheck must be installed system-wide)
+
+# ===================
+# Database & Serialization
+# ===================
+bson>=0.5.10
+dnspython>=2.4.0
+
+# ===================
+# Type Checking & Utilities
+# ===================
+typing-extensions>=4.9.0
+annotated-types>=0.6.0
+
+# ===================
+# Security & Crypto (for GitHub API)
+# ===================
+PyNaCl>=1.5.0
+PyJWT>=2.8.0
+cryptography>=41.0.0
+
+# ===================
+# HTTP & Networking
+# ===================
+certifi>=2023.11.0
+charset-normalizer>=3.3.0
+idna>=3.6
+urllib3>=2.1.0
+
+# ===================
+# Code Quality (optional)
+# ===================
+flake8>=7.0.0
+mypy>=1.8.0
+bandit>=1.7.0
+
+# ===================
+# ML/Fine-tuning (for notebook tests)
+# ===================
+# These are optional - only needed for notebook testing
+# transformers>=4.36.0
+# peft>=0.7.0
+# datasets>=2.14.0
+# accelerate>=0.25.0
+# torch>=2.0.0
+# bitsandbytes>=0.41.0
+# matplotlib>=3.7.0
+# seaborn>=0.13.0
