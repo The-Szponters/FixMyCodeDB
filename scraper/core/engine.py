@@ -508,7 +508,7 @@ def run_scraper(config_path: str, progress_callback: Optional[Callable] = None) 
     num_consumers = config.num_consumer_workers
     temp_dir = config.temp_work_dir
 
-    logging.info(f"Configuration:")
+    logging.info("Configuration:")
     logging.info(f"  - Repositories: {len(config.repositories)}")
     logging.info(f"  - GitHub tokens: {len(tokens)}")
     logging.info(f"  - Consumer workers: {num_consumers}")
@@ -603,7 +603,7 @@ def run_scraper(config_path: str, progress_callback: Optional[Callable] = None) 
     for _ in consumers:
         try:
             task_queue.put(POISON_PILL, timeout=1)
-        except:
+        except Exception:
             pass
 
     # Wait for consumers to finish
@@ -619,6 +619,6 @@ def run_scraper(config_path: str, progress_callback: Optional[Callable] = None) 
         final_count = global_counter.value
 
     logging.info("=" * 50)
-    logging.info(f"SCRAPING COMPLETE")
+    logging.info("SCRAPING COMPLETE")
     logging.info(f"Total records inserted: {final_count}/{target_count}")
     logging.info("=" * 50)

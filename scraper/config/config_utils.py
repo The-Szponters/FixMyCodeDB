@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from datetime import date, datetime
-from typing import List, Optional
+from typing import Optional
 
 from scraper.config.scraper_config import RepoConfig, ScraperConfig
 
@@ -65,19 +65,19 @@ def load_config(file_path: str) -> ScraperConfig:
     github_tokens = data.get("github_tokens", [])
     if not isinstance(github_tokens, list):
         github_tokens = []
-    
+
     # Legacy single token support
     github_token = data.get("github_token")
-    
+
     # Global target record count
     target_record_count = data.get("target_record_count", 1000)
-    
+
     # Number of consumer workers
     num_consumer_workers = data.get("num_consumer_workers", max(1, (os.cpu_count() or 4) // 2))
-    
+
     # Temp work directory (RAM disk)
     temp_work_dir = data.get("temp_work_dir", "/dev/shm" if os.path.exists("/dev/shm") else "/tmp")
-    
+
     # Queue max size
     queue_max_size = data.get("queue_max_size", 100)
 

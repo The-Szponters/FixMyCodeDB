@@ -15,7 +15,7 @@ class CppcheckAnalyzer:
     def __init__(self, timeout: int = 30, temp_dir: Optional[str] = None):
         """
         Initialize cppcheck analyzer.
-        
+
         Args:
             timeout: Maximum time in seconds for cppcheck execution
             temp_dir: Directory for temporary files (e.g., RAM disk for performance)

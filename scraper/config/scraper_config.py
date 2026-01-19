@@ -17,7 +17,7 @@ class RepoConfig:
 class ScraperConfig:
     """
     Main scraper configuration.
-    
+
     Attributes:
         repositories: List of repositories to scrape
         github_tokens: List of GitHub tokens for parallel fetching (round-robin assignment)
@@ -32,10 +32,10 @@ class ScraperConfig:
     num_consumer_workers: int = field(default_factory=lambda: max(1, (os.cpu_count() or 4) // 2))
     temp_work_dir: str = field(default_factory=lambda: "/dev/shm" if os.path.exists("/dev/shm") else "/tmp")
     queue_max_size: int = 100
-    
+
     # Legacy support: single token (deprecated, use github_tokens list)
     github_token: Optional[str] = None
-    
+
     def get_effective_tokens(self) -> List[str]:
         """Get list of tokens, including legacy single token if present."""
         tokens = list(self.github_tokens) if self.github_tokens else []
