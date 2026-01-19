@@ -1,7 +1,7 @@
 {
   "github_tokens": [],
   "max_analysis_workers": 6,
-  "temp_storage_path": "/tmp_ram_scraper",
+  "temp_storage_path": "/tmp/fixmycodedb_scraper",
   "repositories": ["https://github.com/xbmc/xbmc", "https://github.com/google/googletest", "https://github.com/opencv/opencv", "https://github.com/ClickHouse/ClickHouse", "https://github.com/SFML/SFML", "https://github.com/nlohmann/json"],
   "target_record_count": 10,
   "fix_regexes": [

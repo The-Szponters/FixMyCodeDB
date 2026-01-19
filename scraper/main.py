@@ -1,8 +1,8 @@
 """
-Scraper Main Entry Point with Producer-Consumer Architecture and TUI Dashboard.
+Scraper Main Entry Point with Repository-Based Parallelism and TUI Dashboard.
 
 This module provides:
-- ScraperOrchestrator: Manages producer/consumer processes
+- ScraperOrchestrator: Manages downloader threads and analyzer processes
 - TUI Dashboard: Real-time monitoring with rich
 - Legacy mode: Backward-compatible sequential processing
 """
@@ -14,6 +14,7 @@ import multiprocessing as mp
 import os
 import signal
 import sys
+import threading
 import time
 from multiprocessing import Manager, Queue
 from pathlib import Path
@@ -29,11 +30,10 @@ from rich.text import Text
 
 from scraper.core.engine import (
     AnalyzerProcess,
-    DownloaderProcess,
+    DownloaderThread,
+    TokenManager,
     run_scraper,
-    shard_repositories,
 )
-from scraper.core.state_manager import StateManager
 from scraper.network.server import start_server
 
 logger = logging.getLogger(__name__)
@@ -47,13 +47,13 @@ logging.basicConfig(
 
 class ScraperOrchestrator:
     """
-    Orchestrates the producer-consumer scraper architecture.
+    Orchestrates the repository-based parallel scraper architecture.
 
     Features:
-    - Shards repositories across multiple GitHub tokens
-    - Manages downloader (producer) and analyzer (consumer) processes
-    - Provides shared state for TUI dashboard updates
-    - Handles graceful shutdown
+    - 1 DownloaderThread per repository (I/O-bound, uses threading)
+    - Tokens shared via round-robin with TokenManager
+    - Analyzer processes for CPU-bound cppcheck analysis
+    - Shared state for TUI dashboard updates
     """
 
     def __init__(self, config_path: str):
@@ -70,7 +70,6 @@ class ScraperOrchestrator:
         self.manager = Manager()
 
         # Shared dictionaries
-        self.state_dict = self.manager.dict()  # Processed commits tracking
         self.status_dict = self.manager.dict()  # Process status for TUI
         self.stats_dict = self.manager.dict()   # Global statistics
 
@@ -80,28 +79,19 @@ class ScraperOrchestrator:
         self.stats_dict["queue_size"] = 0
         self.stats_dict["start_time"] = time.time()
 
-        # Analysis queue (producers -> consumers)
+        # Analysis queue (downloaders -> analyzers)
         self.analysis_queue: Queue = self.manager.Queue()
 
-        # Process lists
-        self.downloaders: List[DownloaderProcess] = []
+        # Thread/Process lists
+        self.downloaders: List[DownloaderThread] = []
         self.analyzers: List[AnalyzerProcess] = []
 
-        # Stop event for graceful shutdown
-        self.stop_event = mp.Event()
+        # Token manager (initialized in start())
+        self.token_manager: Optional[TokenManager] = None
 
-        # State manager for persistence
-        state_file = self.config.get("state_file_path", "./data/scraper_state.json")
-        self.state_manager = StateManager(
-            state_file,
-            flush_interval=60,
-            flush_threshold=100,
-            manager=self.manager
-        )
-
-        # Load persisted state into shared dict
-        for key, value in self.state_manager.shared_dict.items():
-            self.state_dict[key] = value
+        # Stop events
+        self.thread_stop_event = threading.Event()  # For threads
+        self.process_stop_event = mp.Event()  # For processes
 
         # Register cleanup
         atexit.register(self._cleanup)
@@ -148,11 +138,6 @@ class ScraperOrchestrator:
         """Cleanup on exit."""
         logger.info("Cleaning up orchestrator...")
 
-        # Persist state
-        for key, value in self.state_dict.items():
-            self.state_manager.shared_dict[key] = value
-        self.state_manager.flush_to_disk()
-
         # Cleanup temp storage
         temp_path = self.config.get("temp_storage_path", "/tmp/scraper")
         if os.path.exists(temp_path):
@@ -160,7 +145,7 @@ class ScraperOrchestrator:
             shutil.rmtree(temp_path, ignore_errors=True)
 
     def start(self):
-        """Start all producer and consumer processes."""
+        """Start all downloader threads and analyzer processes."""
         tokens = self.config.get("github_tokens", [])
         repositories = self.config.get("repositories", [])
 
@@ -176,32 +161,35 @@ class ScraperOrchestrator:
         temp_path = self.config.get("temp_storage_path", "/tmp/scraper")
         os.makedirs(temp_path, exist_ok=True)
 
-        # Shard repositories across tokens
-        num_tokens = len(tokens)
-        repo_shards = shard_repositories(repositories, num_tokens)
+        # Initialize TokenManager for thread-safe token sharing
+        self.token_manager = TokenManager(tokens)
 
-        logger.info(f"Starting {num_tokens} downloaders and {self.config['max_analysis_workers']} analyzers")
-        logger.info(f"Sharding {len(repositories)} repos across {num_tokens} tokens")
+        logger.info(f"Starting {len(repositories)} downloader threads (1 per repo)")
+        logger.info(f"Starting {self.config['max_analysis_workers']} analyzer processes")
+        logger.info(f"Using {len(tokens)} tokens with round-robin distribution")
 
-        # Start downloader processes (one per token)
-        for i, (token, repos) in enumerate(zip(tokens, repo_shards)):
-            if not repos:
-                continue
+        # Start downloader threads - 1 thread per repository
+        for i, repo_url in enumerate(repositories):
+            # Round-robin token assignment
+            token = self.token_manager.get_token_for_index(i)
+            token_label = self.token_manager.get_token_label(token)
 
-            downloader = DownloaderProcess(
-                process_id=i + 1,
+            downloader = DownloaderThread(
+                thread_id=i + 1,
+                repo_url=repo_url,
                 token=token,
-                repositories=repos,
+                token_manager=self.token_manager,
                 analysis_queue=self.analysis_queue,
-                state_dict=self.state_dict,
                 status_dict=self.status_dict,
                 stats_dict=self.stats_dict,
                 config=self.config,
-                stop_event=self.stop_event,
+                stop_event=self.thread_stop_event,
             )
             self.downloaders.append(downloader)
             downloader.start()
-            logger.info(f"Started Downloader-{i + 1} with {len(repos)} repos")
+
+            repo_slug = repo_url.split("github.com/")[-1].rstrip("/").rstrip(".git")
+            logger.info(f"Started Downloader [{repo_slug}] with Token {token_label}")
 
         # Start analyzer processes
         num_analyzers = self.config.get("max_analysis_workers", 4)
@@ -212,25 +200,25 @@ class ScraperOrchestrator:
                 status_dict=self.status_dict,
                 stats_dict=self.stats_dict,
                 config=self.config,
-                stop_event=self.stop_event,
+                stop_event=self.process_stop_event,
             )
             self.analyzers.append(analyzer)
             analyzer.start()
             logger.info(f"Started Analyzer-{i + 1}")
 
-        # Start state manager background flush
-        self.state_manager.start_background_flush()
-
     def stop(self):
-        """Stop all processes gracefully."""
-        logger.info("Stopping all processes...")
-        self.stop_event.set()
+        """Stop all threads and processes gracefully."""
+        logger.info("Stopping all threads and processes...")
 
-        # Wait for downloaders
+        # Signal stop
+        self.thread_stop_event.set()
+        self.process_stop_event.set()
+
+        # Wait for downloader threads
         for downloader in self.downloaders:
             downloader.join(timeout=5)
             if downloader.is_alive():
-                downloader.terminate()
+                logger.warning(f"Downloader {downloader.name} did not stop cleanly")
 
         # Wait for analyzers to finish queue
         timeout = 30
@@ -244,12 +232,14 @@ class ScraperOrchestrator:
             if analyzer.is_alive():
                 analyzer.terminate()
 
-        self.state_manager.stop_background_flush()
-        logger.info("All processes stopped")
+        logger.info("All threads and processes stopped")
 
     def is_running(self) -> bool:
-        """Check if any process is still running."""
-        for p in self.downloaders + self.analyzers:
+        """Check if any thread or process is still running."""
+        for t in self.downloaders:
+            if t.is_alive():
+                return True
+        for p in self.analyzers:
             if p.is_alive():
                 return True
         return False
@@ -287,19 +277,19 @@ class ScraperDashboard:
         return Panel(header_text, style="blue", height=3)
 
     def create_producers_table(self, status_data: Dict[str, Any]) -> Table:
-        """Create the producers status table."""
-        table = Table(title="🚀 Producers (Downloaders)", expand=True)
-        table.add_column("ID", style="cyan", width=6)
+        """Create the downloaders status table."""
+        table = Table(title="🚀 Downloaders (1 per Repository)", expand=True)
+        table.add_column("Repository", style="cyan", width=25)
         table.add_column("Token", style="yellow", width=10)
         table.add_column("Status", style="green", width=12)
-        table.add_column("Repository", style="white", width=30)
         table.add_column("Commit", style="magenta", width=10)
         table.add_column("Action", style="blue")
 
         for key, info in sorted(status_data.items()):
             if not isinstance(info, dict):
                 continue
-            if info.get("type") != "producer":
+            # Match both "producer" and "downloader" types
+            if info.get("type") not in ("producer", "downloader"):
                 continue
 
             status = info.get("status", "unknown")
@@ -308,14 +298,25 @@ class ScraperDashboard:
                 "idle": "yellow",
                 "done": "blue",
                 "error": "red",
+                "rate_limited": "red bold",
                 "starting": "cyan"
             }.get(status, "white")
 
+            # Get token label (new format) or suffix (old format)
+            token_display = info.get("token_label", "")
+            if not token_display:
+                token_display = f"...{info.get('token_suffix', 'N/A')}"
+            else:
+                token_display = f"Token {token_display}"
+
+            repo = info.get("repo", "-")
+            if len(repo) > 23:
+                repo = "..." + repo[-20:]
+
             table.add_row(
-                key,
-                f"...{info.get('token_suffix', 'N/A')}",
+                f"[{repo}]",
+                token_display,
                 Text(status, style=status_style),
-                info.get("repo", "-")[:28],
                 info.get("commit", "-"),
                 info.get("action", "-")[:40]
             )
