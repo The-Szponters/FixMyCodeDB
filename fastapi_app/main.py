@@ -26,7 +26,12 @@ LABEL_TO_GROUP_FIELD = {
     "LogicError": "logic_error",
     "ResourceLeak": "resource_leak",
     "SecurityPortability": "security_portability",
-    "CodeQualityPerformance": "code_quality_performance",
+    "UnusedCode": "unused_code",
+    "ConstCorrectness": "const_correctness",
+    "RedundantCode": "redundant_code",
+    "StlMisuse": "stl_misuse",
+    "ClassDesign": "class_design",
+    "CodeStyle": "code_style",
     # Direct field names (also accepted)
     "memory_management": "memory_management",
     "invalid_access": "invalid_access",
@@ -35,7 +40,12 @@ LABEL_TO_GROUP_FIELD = {
     "logic_error": "logic_error",
     "resource_leak": "resource_leak",
     "security_portability": "security_portability",
-    "code_quality_performance": "code_quality_performance",
+    "unused_code": "unused_code",
+    "const_correctness": "const_correctness",
+    "redundant_code": "redundant_code",
+    "stl_misuse": "stl_misuse",
+    "class_design": "class_design",
+    "code_style": "code_style",
 }
 
 

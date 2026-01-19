@@ -37,9 +37,11 @@
       "nullPointerRedundantCheck",
       "nullPointerArithmetic",
       "nullPointerArithmeticRedundantCheck",
+      "nullPointerArithmeticOutOfMemory",
       "possibleNullPointerDereference",
       "nullPointerOutOfMemory",
       "nullPointerOutOfResources",
+      "ctunullpointer",
       "deallocuse",
       "deallocret",
       "autoVariables",
@@ -59,11 +61,14 @@
       "stlcstrthrow",
       "invalidIterator1",
       "derefInvalidIterator",
+      "derefInvalidIteratorRedundantCheck",
       "eraseIteratorOutOfBounds",
       "eraseIteratorOutOfBoundsCond",
       "objectIndex",
       "overlappingWriteUnion",
-      "overlappingWriteFunction"
+      "overlappingWriteFunction",
+      "invalidPointerCast",
+      "knownEmptyContainer"
     ],
     "uninitialized": [
       "uninitdata",
@@ -76,14 +81,14 @@
       "noConstructor",
       "selfInitialization",
       "selfAssignment",
-      "usedef"
+      "usedef",
+      "legacyUninitvar"
     ],
     "concurrency": [
       "raceAfterInterlockedDecrement",
       "globalLockGuard",
       "localMutex",
       "unsafeClassRefMember",
-      "stlcstr",
       "invalidContainerLoop"
     ],
     "logic_error": [
@@ -131,7 +136,10 @@
       "throwInNoexceptFunction",
       "missingReturn",
       "operatorEqMissingReturnStatement",
-      "infiniteLoop"
+      "infiniteLoop",
+      "unreachableCode",
+      "duplicateBreak",
+      "redundantContinue"
     ],
     "resource_leak": [
       "IOWithoutPositioning",
@@ -146,7 +154,8 @@
       "va_start_wrongParameter",
       "va_start_referencePassed",
       "va_end_missing",
-      "va_start_subsequentCalls"
+      "va_start_subsequentCalls",
+      "ignoredReturnValue"
     ],
     "security_portability": [
       "invalidscanf",
@@ -182,7 +191,7 @@
       "shiftNegativeLHS",
       "shiftNegative"
     ],
-    "code_quality_performance": [
+    "unused_code": [
       "unusedVariable",
       "unusedAllocatedMemory",
       "unreadVariable",
@@ -195,6 +204,9 @@
       "unusedLabelSwitchConfiguration",
       "unusedPrivateFunction",
       "unusedScopedObject",
+      "variableScope"
+    ],
+    "const_correctness": [
       "passedByValue",
       "passedByValueCallback",
       "constParameter",
@@ -205,6 +217,9 @@
       "constVariablePointer",
       "constParameterCallback",
       "constStatement",
+      "iterateByValue"
+    ],
+    "redundant_code": [
       "redundantCopy",
       "redundantCopyLocalConst",
       "redundantAssignment",
@@ -212,6 +227,9 @@
       "redundantPointerOp",
       "uselessAssignmentArg",
       "uselessAssignmentPtrArg",
+      "returnStdMoveLocal"
+    ],
+    "stl_misuse": [
       "stlSize",
       "stlIfStrFind",
       "stlFindInsert",
@@ -222,15 +240,32 @@
       "uselessCallsSubstr",
       "uselessCallsEmpty",
       "uselessCallsRemove",
+      "useStlAlgorithm"
+    ],
+    "class_design": [
+      "noExplicitConstructor",
+      "noCopyConstructor",
+      "noOperatorEq",
+      "operatorEqToSelf",
+      "operatorEqVarError",
       "uselessOverride",
-      "returnByReference",
-      "postfixOperator",
-      "useStlAlgorithm",
       "missingOverride",
       "useInitializationList",
       "functionStatic",
       "functionConst",
-      "cstyleCast"
+      "virtualCallInConstructor",
+      "duplInheritedMember",
+      "ctuOneDefinitionRuleViolation"
+    ],
+    "code_style": [
+      "cstyleCast",
+      "returnByReference",
+      "postfixOperator",
+      "shadowVariable",
+      "shadowArgument",
+      "shadowFunction",
+      "funcArgOrderDifferent",
+      "unpreciseMathCall"
     ]
   },
   "ignore_list": [
@@ -242,6 +277,69 @@
     "class_X_Y",
     "macroWithSemicolon",
     "information",
-    "debug"
+    "debug",
+    "checkLevelNormal",
+    "noValidConfiguration",
+    "unknownMacro",
+    "syntaxError",
+    "internalAstError",
+    "templateRecursion",
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "8",
+    "16",
+    "21",
+    "32",
+    "64",
+    "76",
+    "256",
+    "10000",
+    "i",
+    "f",
+    "N",
+    "id",
+    "nm",
+    "idx",
+    "size",
+    "Size",
+    "name",
+    "code",
+    "cond",
+    "hash",
+    "peer",
+    "this",
+    "child",
+    "index",
+    "random",
+    "window",
+    "nodiscard",
+    "predicate",
+    "hostport",
+    "agg_idx",
+    "r_idx",
+    "aggr_idx",
+    "group_idx",
+    "group_key",
+    "leaf_idx",
+    "vector_idx",
+    "idx_chunk",
+    "hash_from",
+    "hash_to",
+    "drop_index_",
+    "pool_size_",
+    "result_row",
+    "output_node",
+    "maybe_unused",
+    "tangent_size",
+    "tanget_size",
+    "num_experiments",
+    "async_buffers_offset",
+    "BUSTUB_PAGE_SIZE",
+    "GRPC_MAX_SOCKADDR_SIZE",
+    "GRPC_SLICE_INLINED_SIZE",
+    "UPB_STATUS_MAX_MESSAGE"
   ]
 }

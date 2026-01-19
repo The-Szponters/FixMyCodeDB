@@ -78,7 +78,12 @@ var schemaValidator = {
                             logic_error: { bsonType: "bool" },
                             resource_leak: { bsonType: "bool" },
                             security_portability: { bsonType: "bool" },
-                            code_quality_performance: { bsonType: "bool" }
+                            unused_code: { bsonType: "bool" },
+                            const_correctness: { bsonType: "bool" },
+                            redundant_code: { bsonType: "bool" },
+                            stl_misuse: { bsonType: "bool" },
+                            class_design: { bsonType: "bool" },
+                            code_style: { bsonType: "bool" }
                         }
                     }
                 }
