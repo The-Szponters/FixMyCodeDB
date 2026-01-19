@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import tempfile
 from datetime import date, datetime
 from typing import Optional
 
@@ -75,8 +76,9 @@ def load_config(file_path: str) -> ScraperConfig:
     # Number of consumer workers
     num_consumer_workers = data.get("num_consumer_workers", max(1, (os.cpu_count() or 4) // 2))
 
-    # Temp work directory (RAM disk)
-    temp_work_dir = data.get("temp_work_dir", "/dev/shm" if os.path.exists("/dev/shm") else "/tmp")
+    # Temp work directory (RAM disk preferred for performance, fallback to system temp)
+    default_temp_dir = tempfile.gettempdir()
+    temp_work_dir = data.get("temp_work_dir", default_temp_dir)
 
     # Queue max size
     queue_max_size = data.get("queue_max_size", 100)

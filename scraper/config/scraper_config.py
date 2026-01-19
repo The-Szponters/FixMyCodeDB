@@ -1,4 +1,5 @@
 import os
+import tempfile
 from dataclasses import dataclass, field
 from datetime import date
 from typing import List, Optional
@@ -30,7 +31,7 @@ class ScraperConfig:
     github_tokens: List[str] = field(default_factory=list)
     target_record_count: int = 1000
     num_consumer_workers: int = field(default_factory=lambda: max(1, (os.cpu_count() or 4) // 2))
-    temp_work_dir: str = field(default_factory=lambda: "/dev/shm" if os.path.exists("/dev/shm") else "/tmp")
+    temp_work_dir: str = field(default_factory=tempfile.gettempdir)
     queue_max_size: int = 100
 
     # Legacy support: single token (deprecated, use github_tokens list)

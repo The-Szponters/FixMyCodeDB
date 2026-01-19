@@ -273,7 +273,8 @@ def producer_task(
                         candidates_pushed += 1
                         logging.debug(f"Pushed task: {sha[:7]}/{base_name}")
                         break
-                    except Exception:
+                    except Exception:  # nosec B112
+                        # Queue full timeout - retry until stop_event is set
                         continue
 
         logging.info(f"Producer finished. Pushed {candidates_pushed} candidates.")
@@ -603,8 +604,9 @@ def run_scraper(config_path: str, progress_callback: Optional[Callable] = None) 
     for _ in consumers:
         try:
             task_queue.put(POISON_PILL, timeout=1)
-        except Exception:
-            pass
+        except Exception:  # nosec B110
+            # Best-effort shutdown signal - consumer will exit on stop_event anyway
+            logging.debug("Failed to send poison pill, consumer will exit via stop_event")
 
     # Wait for consumers to finish
     logging.info("Waiting for consumers to finish...")
