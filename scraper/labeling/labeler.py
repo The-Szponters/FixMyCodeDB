@@ -2,7 +2,7 @@
 Main Labeler class that orchestrates code analysis.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .analyzers import CppcheckAnalyzer
 from .config_mapper import ConfigBasedMapper
@@ -14,17 +14,18 @@ class Labeler:
     matching the fastapi_app.models.Labels schema.
     """
 
-    def __init__(self, timeout: int = 30, config_path: str = None):
+    def __init__(self, timeout: int = 30, config_path: str = None, temp_dir: Optional[str] = None):
         """
         Initialize labeler with analyzers.
 
         Args:
             timeout: Maximum time in seconds for each analyzer
             config_path: Path to labels_config.json (optional)
+            temp_dir: Directory for temporary files (e.g., RAM disk for performance)
         """
         import os
 
-        self.cppcheck = CppcheckAnalyzer(timeout=timeout)
+        self.cppcheck = CppcheckAnalyzer(timeout=timeout, temp_dir=temp_dir)
         if config_path is None:
             config_path = os.path.join(os.path.dirname(__file__), "..", "labels_config.json")
         self.mapper = ConfigBasedMapper(config_path)

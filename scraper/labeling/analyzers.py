@@ -6,14 +6,22 @@ import shutil
 import subprocess  # nosec B404
 import tempfile
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 class CppcheckAnalyzer:
     """Wrapper for cppcheck static analyzer."""
 
-    def __init__(self, timeout: int = 30):
+    def __init__(self, timeout: int = 30, temp_dir: Optional[str] = None):
+        """
+        Initialize cppcheck analyzer.
+        
+        Args:
+            timeout: Maximum time in seconds for cppcheck execution
+            temp_dir: Directory for temporary files (e.g., RAM disk for performance)
+        """
         self.timeout = timeout
+        self.temp_dir = temp_dir
         self.cppcheck_path = shutil.which("cppcheck")
         if not self.cppcheck_path:
             raise RuntimeError("cppcheck not found in PATH")
@@ -31,7 +39,7 @@ class CppcheckAnalyzer:
         if not code.strip():
             return []
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False, dir=self.temp_dir) as f:
             f.write(code)
             temp_file = f.name
 

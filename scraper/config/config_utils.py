@@ -1,7 +1,8 @@
 import json
 import logging
+import os
 from datetime import date, datetime
-from typing import Optional
+from typing import List, Optional
 
 from scraper.config.scraper_config import RepoConfig, ScraperConfig
 
@@ -26,27 +27,69 @@ def load_config(file_path: str) -> ScraperConfig:
         print("Error: Key 'repositories' must be a list.")
         return ScraperConfig(repositories=[])
 
+    # Global fix_regexes (used if repo doesn't specify its own)
+    global_fix_regexes = data.get("fix_regexes", DEFAULT_FIX_REGEXES)
+
     for entry in raw_repos:
-        if "url" not in entry or "target_record_count" not in entry:
-            print(f"Skipped entry (missing url or target_record_count): {entry}")
+        # Handle both formats:
+        # 1. Simple URL string: "https://github.com/owner/repo"
+        # 2. Object with url key: {"url": "...", "start_date": "...", ...}
+        if isinstance(entry, str):
+            # Simple URL string format
+            url = entry
+            start_dt = None
+            end_dt = None
+            regexes = global_fix_regexes
+        elif isinstance(entry, dict):
+            # Object format
+            if "url" not in entry:
+                print(f"Skipped entry (missing url): {entry}")
+                continue
+            url = entry["url"]
+            start_dt = parse_date(entry.get("start_date"))
+            end_dt = parse_date(entry.get("end_date"))
+            regexes = entry.get("fix_regexes", global_fix_regexes)
+        else:
+            print(f"Skipped invalid entry: {entry}")
             continue
 
-        url = entry["url"]
-        count = int(entry["target_record_count"])
-
-        start_dt = parse_date(entry.get("start_date"))
-        end_dt = parse_date(entry.get("end_date"))
-
-        regexes = entry.get("fix_regexes")
-        if not regexes:
-            regexes = DEFAULT_FIX_REGEXES
-
-        config_obj = RepoConfig(url=url, target_record_count=count, start_date=start_dt, end_date=end_dt, fix_regexes=regexes)
+        config_obj = RepoConfig(
+            url=url,
+            start_date=start_dt,
+            end_date=end_dt,
+            fix_regexes=regexes
+        )
         repo_configs.append(config_obj)
 
+    # Parse GitHub tokens (list) - new format
+    github_tokens = data.get("github_tokens", [])
+    if not isinstance(github_tokens, list):
+        github_tokens = []
+    
+    # Legacy single token support
     github_token = data.get("github_token")
+    
+    # Global target record count
+    target_record_count = data.get("target_record_count", 1000)
+    
+    # Number of consumer workers
+    num_consumer_workers = data.get("num_consumer_workers", max(1, (os.cpu_count() or 4) // 2))
+    
+    # Temp work directory (RAM disk)
+    temp_work_dir = data.get("temp_work_dir", "/dev/shm" if os.path.exists("/dev/shm") else "/tmp")
+    
+    # Queue max size
+    queue_max_size = data.get("queue_max_size", 100)
 
-    return ScraperConfig(repositories=repo_configs, github_token=github_token)
+    return ScraperConfig(
+        repositories=repo_configs,
+        github_tokens=github_tokens,
+        github_token=github_token,
+        target_record_count=target_record_count,
+        num_consumer_workers=num_consumer_workers,
+        temp_work_dir=temp_work_dir,
+        queue_max_size=queue_max_size
+    )
 
 
 def parse_date(date_str: str) -> Optional[date]:
