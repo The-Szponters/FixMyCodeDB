@@ -131,7 +131,7 @@ def producer_task(
 ) -> None:
     """
     Producer process: Fetches commits from a repository and pushes candidate tasks to queue.
-    
+
     Args:
         repo_config: Repository configuration
         token: GitHub API token for this producer
@@ -143,7 +143,7 @@ def producer_task(
     """
     mp.current_process().name = producer_name
     logging.info(f"Starting producer for {repo_config.url}")
-    
+
     try:
         # Initialize GitHub client
         if token:
@@ -157,39 +157,39 @@ def producer_task(
         else:
             logging.warning("No token - using unauthenticated API (strict rate limits)")
             g = Github()
-        
+
         repo_slug = get_repo_slug(repo_config.url)
         repo = g.get_repo(repo_slug)
-        
+
         # Date range setup
         since_dt = None
         if repo_config.start_date:
             since_dt = datetime.combine(repo_config.start_date, datetime.min.time())
         if not since_dt:
             since_dt = datetime(2020, 1, 1)
-        
+
         until_dt = datetime.now()
         if repo_config.end_date:
             until_dt = datetime.combine(repo_config.end_date, datetime.max.time())
-        
+
         commits = repo.get_commits(since=since_dt, until=until_dt)
         candidates_pushed = 0
-        
+
         for commit_wrapper in commits:
             # Check if we should stop
             if stop_event.is_set():
                 logging.info("Stop signal received, finishing producer")
                 break
-            
+
             # Check global counter
             with global_counter.get_lock():
                 if global_counter.value >= target_count:
                     logging.info("Global target reached, finishing producer")
                     break
-            
+
             msg = commit_wrapper.commit.message
             sha = commit_wrapper.sha
-            
+
             # Apply fix regex filters
             if repo_config.fix_regexes:
                 matched = False
@@ -199,19 +199,19 @@ def producer_task(
                         break
                 if not matched:
                     continue
-            
+
             # Need parent commit for diff
             if not commit_wrapper.parents:
                 continue
             parent_sha = commit_wrapper.parents[0].sha
-            
+
             files_modified = commit_wrapper.files
             processed_bases: Set[str] = set()
             repo_files_cache: Optional[List[str]] = None
-            
+
             for f in files_modified:
                 path = f.filename
-                
+
                 # Skip removed files and test files
                 if f.status == "removed":
                     continue
@@ -219,43 +219,43 @@ def producer_task(
                     continue
                 if not path.endswith((".cpp", ".cxx", ".cc", ".h", ".hpp")):
                     continue
-                
+
                 filename = os.path.basename(path)
                 base_name = os.path.splitext(filename)[0]
-                
+
                 if base_name in processed_bases:
                     continue
                 processed_bases.add(base_name)
-                
+
                 if repo_files_cache is None:
                     repo_files_cache = get_all_repo_files(repo, sha)
-                
+
                 # Find header and implementation files
                 header_path = None
                 impl_path = None
-                
+
                 if path.endswith((".h", ".hpp")):
                     header_path = path
                     impl_path = find_corresponding_file(path, [".cpp", ".cxx", ".cc"], repo_files_cache)
                 else:
                     impl_path = path
                     header_path = find_corresponding_file(path, [".h", ".hpp"], repo_files_cache)
-                
+
                 # Get file contents before and after
                 h_before = get_github_content(repo, parent_sha, header_path) if header_path else ""
                 h_after = get_github_content(repo, sha, header_path) if header_path else ""
                 cpp_before = get_github_content(repo, parent_sha, impl_path) if impl_path else ""
                 cpp_after = get_github_content(repo, sha, impl_path) if impl_path else ""
-                
+
                 if not h_after and not cpp_after:
                     continue
-                
+
                 full_code_before = format_context(h_before, cpp_before)
                 full_code_fixed = format_context(h_after, cpp_after)
-                
+
                 if full_code_before == full_code_fixed:
                     continue
-                
+
                 # Create candidate task and push to queue
                 task = CandidateTask(
                     code_original=full_code_before,
@@ -265,7 +265,7 @@ def producer_task(
                     commit_date=commit_wrapper.commit.author.date.isoformat(),
                     base_name=base_name
                 )
-                
+
                 # Use put with timeout to allow checking stop_event
                 while not stop_event.is_set():
                     try:
@@ -275,9 +275,9 @@ def producer_task(
                         break
                     except Exception:
                         continue
-        
+
         logging.info(f"Producer finished. Pushed {candidates_pushed} candidates.")
-        
+
     except GithubException as e:
         logging.error(f"GitHub API Error: {e}")
     except Exception as e:
@@ -295,16 +295,16 @@ def save_payload_to_file(payload: Dict[str, Any], output_dir: str = "extracted_d
         file_hash = payload.get("code_hash", "unknown_hash")
         filename = f"{file_hash}.json"
         filepath = os.path.join(output_dir, filename)
-        
+
         readable_payload = payload.copy()
         if isinstance(readable_payload.get("code_original"), str):
             readable_payload["code_original"] = readable_payload["code_original"].splitlines()
         if isinstance(readable_payload.get("code_fixed"), str):
             readable_payload["code_fixed"] = readable_payload["code_fixed"].splitlines()
-        
+
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(readable_payload, f, indent=4, ensure_ascii=False)
-        
+
         logging.debug(f"Saved payload to: {filepath}")
     except Exception as e:
         logging.error(f"Failed to save payload: {e}")
@@ -338,7 +338,7 @@ def consumer_task(
 ) -> None:
     """
     Consumer process: Pops tasks from queue, labels code, and inserts into DB.
-    
+
     Args:
         task_queue: Shared queue to pop candidate tasks from
         global_counter: Shared counter for successful inserts
@@ -350,24 +350,24 @@ def consumer_task(
     consumer_name = f"Consumer-{consumer_id}"
     mp.current_process().name = consumer_name
     logging.info("Starting consumer worker")
-    
+
     # Import labeler here to avoid pickling issues
     from scraper.labeling.labeler import Labeler
-    
+
     # Initialize labeler with RAM-based temp directory
     config_path = os.path.join(os.path.dirname(__file__), "..", "labels_config.json")
     labeler = Labeler(timeout=30, config_path=config_path, temp_dir=temp_work_dir)
-    
+
     processed_count = 0
     inserted_count = 0
-    
+
     while True:
         # Check if target reached
         with global_counter.get_lock():
             if global_counter.value >= target_count:
                 logging.info("Global target reached, stopping consumer")
                 break
-        
+
         try:
             task = task_queue.get(timeout=2)
         except Empty:
@@ -376,28 +376,28 @@ def consumer_task(
                 logging.info("Queue empty and stop signal received, finishing")
                 break
             continue
-        
+
         # Check for poison pill
         if task is POISON_PILL:
             logging.info("Received poison pill, finishing")
             break
-        
+
         if not isinstance(task, CandidateTask):
             continue
-        
+
         processed_count += 1
-        
+
         try:
             # Run labeling
             labels = labeler.analyze(task.code_original, task.code_fixed)
-            
+
             # Skip if no issues found
             if not labels.get("cppcheck"):
                 logging.debug(f"No issues found for {task.commit_sha[:7]}/{task.base_name}")
                 continue
-            
+
             labels.setdefault("clang", {})
-            
+
             # Build payload
             payload = {
                 "code_original": task.code_original,
@@ -411,31 +411,31 @@ def consumer_task(
                 "ingest_timestamp": datetime.now().isoformat(),
                 "labels": labels,
             }
-            
+
             # Save locally
             save_payload_to_file(payload)
-            
+
             # Insert to DB
             inserted_id = insert_payload_to_db(payload)
-            
+
             if inserted_id:
                 inserted_count += 1
                 with global_counter.get_lock():
                     global_counter.value += 1
                     current_total = global_counter.value
-                
+
                 logging.info(f"Inserted {task.commit_sha[:7]}/{task.base_name} (Total: {current_total}/{target_count})")
-                
+
                 # Check if we hit target
                 if current_total >= target_count:
                     logging.info("Target reached! Signaling stop.")
                     stop_event.set()
                     break
-            
+
         except Exception as e:
             logging.warning(f"Consumer error processing {task.commit_sha[:7]}: {e}")
             continue
-    
+
     logging.info(f"Consumer finished. Processed: {processed_count}, Inserted: {inserted_count}")
 
 
@@ -453,7 +453,7 @@ def monitor_progress(
 ) -> None:
     """
     Monitor thread: Logs progress and calls progress callback.
-    
+
     Args:
         global_counter: Shared counter for total records
         target_count: Global target
@@ -463,23 +463,23 @@ def monitor_progress(
         interval: Seconds between progress updates
     """
     last_count = 0
-    
+
     while not stop_event.is_set():
         time.sleep(interval)
-        
+
         with global_counter.get_lock():
             current = global_counter.value
-        
+
         queue_size = task_queue.qsize() if hasattr(task_queue, 'qsize') else -1
         rate = (current - last_count) / interval
-        
+
         logging.info(f"Progress: {current}/{target_count} records | Queue: {queue_size} | Rate: {rate:.1f}/s")
-        
+
         if progress_callback:
             progress_callback(current, target_count, f"queue:{queue_size}")
-        
+
         last_count = current
-        
+
         if current >= target_count:
             break
 
@@ -491,50 +491,50 @@ def monitor_progress(
 def run_scraper(config_path: str, progress_callback: Optional[Callable] = None) -> None:
     """
     Main entry point: Orchestrates producer-consumer parallel scraping.
-    
+
     Args:
         config_path: Path to configuration JSON file
         progress_callback: Optional callback for progress updates
     """
     logging.info(f"Starting parallel scraper with config: {config_path}")
-    
+
     config = load_config(config_path)
     if not config.repositories:
         logging.warning("No repositories found in config.")
         return
-    
+
     tokens = config.get_effective_tokens()
     target_count = config.target_record_count
     num_consumers = config.num_consumer_workers
     temp_dir = config.temp_work_dir
-    
+
     logging.info(f"Configuration:")
     logging.info(f"  - Repositories: {len(config.repositories)}")
     logging.info(f"  - GitHub tokens: {len(tokens)}")
     logging.info(f"  - Consumer workers: {num_consumers}")
     logging.info(f"  - Target records: {target_count}")
     logging.info(f"  - Temp directory: {temp_dir}")
-    
+
     # Ensure temp directory exists
     os.makedirs(temp_dir, exist_ok=True)
-    
+
     # Create shared state
     task_queue = mp.Queue(maxsize=config.queue_max_size)
     global_counter = mp.Value('i', 0)
     stop_event = mp.Event()
-    
+
     # Assign tokens to repositories (round-robin)
     repo_token_pairs = []
     for i, repo_config in enumerate(config.repositories):
         token = tokens[i % len(tokens)] if tokens else None
         repo_token_pairs.append((repo_config, token))
-    
+
     # Start producer processes
     producers = []
     for i, (repo_config, token) in enumerate(repo_token_pairs):
         repo_name = get_repo_slug(repo_config.url).split('/')[-1]
         producer_name = f"Producer-{repo_name}"
-        
+
         p = mp.Process(
             target=producer_task,
             args=(repo_config, token, task_queue, stop_event, global_counter, target_count, producer_name),
@@ -543,7 +543,7 @@ def run_scraper(config_path: str, progress_callback: Optional[Callable] = None) 
         p.start()
         producers.append(p)
         logging.info(f"Started {producer_name}")
-    
+
     # Start consumer processes
     consumers = []
     for i in range(num_consumers):
@@ -555,41 +555,41 @@ def run_scraper(config_path: str, progress_callback: Optional[Callable] = None) 
         c.start()
         consumers.append(c)
         logging.info(f"Started Consumer-{i}")
-    
+
     # Start monitor in main thread
     try:
         while True:
             # Check if all producers finished
             producers_alive = any(p.is_alive() for p in producers)
-            
+
             # Check progress
             with global_counter.get_lock():
                 current = global_counter.value
-            
+
             queue_size = task_queue.qsize() if hasattr(task_queue, 'qsize') else -1
-            
+
             logging.info(f"Progress: {current}/{target_count} | Queue: {queue_size} | Producers alive: {producers_alive}")
-            
+
             if progress_callback:
                 progress_callback(current, target_count, f"q:{queue_size}")
-            
+
             # Check stop conditions
             if current >= target_count:
                 logging.info("Target reached! Initiating shutdown...")
                 stop_event.set()
                 break
-            
+
             if not producers_alive and task_queue.empty():
                 logging.info("All producers finished and queue empty. Initiating shutdown...")
                 stop_event.set()
                 break
-            
+
             time.sleep(5)
-    
+
     except KeyboardInterrupt:
         logging.info("Interrupted! Initiating graceful shutdown...")
         stop_event.set()
-    
+
     # Wait for producers to finish
     logging.info("Waiting for producers to finish...")
     for p in producers:
@@ -597,7 +597,7 @@ def run_scraper(config_path: str, progress_callback: Optional[Callable] = None) 
         if p.is_alive():
             logging.warning(f"Force terminating {p.name}")
             p.terminate()
-    
+
     # Send poison pills to consumers
     logging.info("Sending shutdown signal to consumers...")
     for _ in consumers:
@@ -605,7 +605,7 @@ def run_scraper(config_path: str, progress_callback: Optional[Callable] = None) 
             task_queue.put(POISON_PILL, timeout=1)
         except:
             pass
-    
+
     # Wait for consumers to finish
     logging.info("Waiting for consumers to finish...")
     for c in consumers:
@@ -613,11 +613,11 @@ def run_scraper(config_path: str, progress_callback: Optional[Callable] = None) 
         if c.is_alive():
             logging.warning(f"Force terminating {c.name}")
             c.terminate()
-    
+
     # Final report
     with global_counter.get_lock():
         final_count = global_counter.value
-    
+
     logging.info("=" * 50)
     logging.info(f"SCRAPING COMPLETE")
     logging.info(f"Total records inserted: {final_count}/{target_count}")
