@@ -20,7 +20,12 @@ class LabelsGroup(BaseModel):
     logic_error: bool = False
     resource_leak: bool = False
     security_portability: bool = False
-    code_quality_performance: bool = False
+    unused_code: bool = False
+    const_correctness: bool = False
+    redundant_code: bool = False
+    stl_misuse: bool = False
+    class_design: bool = False
+    code_style: bool = False
 
 
 class Labels(BaseModel):
