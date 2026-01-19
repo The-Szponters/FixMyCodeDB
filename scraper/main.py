@@ -33,12 +33,13 @@ from scraper.core.engine import (
     DownloaderThread,
     TokenManager,
     run_scraper,
+    setup_file_logging,
 )
 from scraper.network.server import start_server
 
 logger = logging.getLogger(__name__)
 
-# Configure logging
+# Configure basic logging (will be replaced by setup_file_logging)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -65,6 +66,10 @@ class ScraperOrchestrator:
         """
         self.config_path = config_path
         self.config = self._load_config(config_path)
+
+        # Setup file logging
+        log_dir = self.config.get("log_dir", "logs")
+        self.log_file = setup_file_logging(log_dir)
 
         # Multiprocessing manager for shared state
         self.manager = Manager()

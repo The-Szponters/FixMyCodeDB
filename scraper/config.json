@@ -2,6 +2,9 @@
   "github_tokens": [],
   "max_analysis_workers": 6,
   "temp_storage_path": "/tmp/fixmycodedb_scraper",
+  "log_dir": "logs",
+  "debug_sample_dir": "logs/debug_samples",
+  "debug_sample_rate": 10,
   "repositories": ["https://github.com/xbmc/xbmc", "https://github.com/google/googletest", "https://github.com/opencv/opencv", "https://github.com/ClickHouse/ClickHouse", "https://github.com/SFML/SFML", "https://github.com/nlohmann/json"],
   "target_record_count": 10,
   "fix_regexes": [

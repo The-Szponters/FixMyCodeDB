@@ -50,5 +50,9 @@ __pycache__/
 .mypy_cache/
 .pytest_cache/
 
+# Logs
+logs/
+*.log
+
 # exported files
 exported_files

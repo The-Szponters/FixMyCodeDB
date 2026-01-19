@@ -30,13 +30,79 @@ from github import Auth, Github, GithubException
 from scraper.labeling.labeler import Labeler
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
 
 API_URL = os.getenv("API_URL", "http://fastapi:8000")
+
+# Global counter for debug sample files
+_debug_sample_counter = 0
+_debug_sample_lock = threading.Lock()
+
+
+def setup_file_logging(log_dir: str = "logs") -> None:
+    """Setup file-based logging in addition to console."""
+    os.makedirs(log_dir, exist_ok=True)
+
+    # Create timestamped log file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = os.path.join(log_dir, f"scraper_{timestamp}.log")
+
+    # File handler with detailed format
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)
+    file_formatter = logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(name)s - %(funcName)s:%(lineno)d - %(message)s"
+    )
+    file_handler.setFormatter(file_formatter)
+
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_formatter = logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+    )
+    console_handler.setFormatter(console_formatter)
+
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+
+    # Clear existing handlers and add new ones
+    root_logger.handlers.clear()
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+
+    logger.info(f"Logging initialized. Log file: {log_file}")
+    return log_file
+
+
+def save_debug_sample(temp_dir: str, debug_dir: str, sample_rate: int = 10) -> bool:
+    """
+    Save a copy of temp files for debugging (1 in sample_rate).
+    Returns True if sample was saved.
+    """
+    global _debug_sample_counter
+
+    with _debug_sample_lock:
+        _debug_sample_counter += 1
+        counter = _debug_sample_counter
+
+    # Save every Nth sample
+    if counter % sample_rate != 1:
+        return False
+
+    try:
+        os.makedirs(debug_dir, exist_ok=True)
+        sample_name = f"sample_{counter:04d}_{os.path.basename(temp_dir)}"
+        dest_dir = os.path.join(debug_dir, sample_name)
+
+        # Copy the temp directory
+        shutil.copytree(temp_dir, dest_dir)
+        logger.debug(f"Saved debug sample #{counter}: {dest_dir}")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to save debug sample: {e}")
+        return False
 
 
 # ============== Utility Functions ==============
@@ -255,8 +321,12 @@ class DownloaderThread(threading.Thread):
         self.target_record_count = config.get("target_record_count", 10)
         self.temp_storage_path = config.get("temp_storage_path", "/tmp/fixmycodedb_scraper")
         self.fix_regexes = config.get("fix_regexes", [])
+        self.debug_sample_dir = config.get("debug_sample_dir", "logs/debug_samples")
+        self.debug_sample_rate = config.get("debug_sample_rate", 10)
 
-        self.processed_count = 0
+        # Counters
+        self.processed_count = 0  # Files queued for analysis
+        self.commits_processed = 0  # Commits scanned (with valid files)
 
     def _update_status(self, status: str, commit: str = "", action: str = ""):
         """Update status for TUI."""
@@ -291,40 +361,54 @@ class DownloaderThread(threading.Thread):
         try:
             # Get commits (same as old logic)
             commits = repo.get_commits()
+            logger.info(f"[{self.repo_slug}] Starting to iterate commits...")
 
             for commit_wrapper in commits:
                 if self.stop_event.is_set():
+                    logger.info(f"[{self.repo_slug}] Stop event set, exiting")
                     break
+
+                # Check target based on FILES QUEUED (not commits)
                 if self.processed_count >= self.target_record_count:
-                    logger.info(f"[{self.repo_slug}] Target count reached: {self.processed_count}")
+                    logger.info(f"[{self.repo_slug}] Target file count reached: {self.processed_count} files from {self.commits_processed} commits")
                     break
 
                 sha = commit_wrapper.sha
                 msg = commit_wrapper.commit.message
+                logger.debug(f"[{self.repo_slug}] Checking commit {sha[:7]}: {msg[:50]}...")
 
                 # Fix pattern matching - EXACT same as old logic
                 if self.fix_regexes:
                     matched = False
+                    matched_pattern = None
                     for pattern in self.fix_regexes:
                         if re.search(pattern, msg, re.IGNORECASE | re.MULTILINE):
                             matched = True
+                            matched_pattern = pattern
                             break
                     if not matched:
+                        logger.debug(f"[{self.repo_slug}] Commit {sha[:7]} skipped - no fix pattern match")
                         continue
+                    logger.debug(f"[{self.repo_slug}] Commit {sha[:7]} matched pattern: {matched_pattern}")
 
                 # Need parent for diff
                 if not commit_wrapper.parents:
                     continue
                 parent_sha = commit_wrapper.parents[0].sha
 
-                self._update_status("working", commit=sha[:7], action=f"Processing ({self.processed_count + 1}/{self.target_record_count})")
+                self._update_status("working", commit=sha[:7], action=f"Processing ({self.processed_count}/{self.target_record_count} files)")
 
                 # Process files - EXACT same as old logic
                 files_modified = commit_wrapper.files
                 processed_bases: Set[str] = set()
                 repo_files_cache: Optional[List[str]] = None
+                files_queued_this_commit = 0
 
-                for f in files_modified:
+                # Convert PaginatedList to list to allow len() and iteration
+                files_list = list(files_modified)
+                logger.debug(f"[{self.repo_slug}] Commit {sha[:7]} has {len(files_list)} modified files")
+
+                for f in files_list:
                     if self.stop_event.is_set():
                         break
 
@@ -332,21 +416,28 @@ class DownloaderThread(threading.Thread):
 
                     # Skip criteria - EXACT same as old logic
                     if f.status == "removed":
+                        logger.debug(f"[{self.repo_slug}] Skipping {path} - file removed")
                         continue
                     if "test" in path.lower():
+                        logger.debug(f"[{self.repo_slug}] Skipping {path} - test file")
                         continue
                     if not path.endswith((".cpp", ".cxx", ".cc", ".h", ".hpp")):
+                        logger.debug(f"[{self.repo_slug}] Skipping {path} - not C++ file")
                         continue
 
                     filename = os.path.basename(path)
                     base_name = os.path.splitext(filename)[0]
 
                     if base_name in processed_bases:
+                        logger.debug(f"[{self.repo_slug}] Skipping {path} - base {base_name} already processed")
                         continue
                     processed_bases.add(base_name)
 
+                    logger.debug(f"[{self.repo_slug}] Processing file: {path} (base: {base_name})")
+
                     if repo_files_cache is None:
                         repo_files_cache = get_all_repo_files(repo, sha)
+                        logger.debug(f"[{self.repo_slug}] Fetched repo file tree: {len(repo_files_cache)} files")
 
                     # Find header/impl pairs - EXACT same as old logic
                     header_path = None
@@ -359,20 +450,28 @@ class DownloaderThread(threading.Thread):
                         impl_path = path
                         header_path = find_corresponding_file(path, [".h", ".hpp"], repo_files_cache)
 
+                    logger.debug(f"[{self.repo_slug}] Found pair - header: {header_path}, impl: {impl_path}")
+
                     # Download content - EXACT same as old logic
                     h_before = get_github_content(repo, parent_sha, header_path) if header_path else ""
                     h_after = get_github_content(repo, sha, header_path) if header_path else ""
                     cpp_before = get_github_content(repo, parent_sha, impl_path) if impl_path else ""
                     cpp_after = get_github_content(repo, sha, impl_path) if impl_path else ""
 
+                    logger.debug(f"[{self.repo_slug}] Content sizes - h_before:{len(h_before)}, h_after:{len(h_after)}, cpp_before:{len(cpp_before)}, cpp_after:{len(cpp_after)}")
+
                     if not h_after and not cpp_after:
+                        logger.debug(f"[{self.repo_slug}] Skipping - no content after commit")
                         continue
 
                     full_code_before = format_context(h_before, cpp_before)
                     full_code_fixed = format_context(h_after, cpp_after)
 
                     if full_code_before == full_code_fixed:
+                        logger.debug(f"[{self.repo_slug}] Skipping - no actual code change")
                         continue
+
+                    logger.debug(f"[{self.repo_slug}] Code change detected: {len(full_code_before)} -> {len(full_code_fixed)} chars")
 
                     # Create temp dir and save files
                     temp_dir = os.path.join(
@@ -389,6 +488,9 @@ class DownloaderThread(threading.Thread):
                         save_file_to_tmpfs(h_after, temp_dir, f"after_{os.path.basename(header_path)}")
                     if cpp_after:
                         save_file_to_tmpfs(cpp_after, temp_dir, f"after_{os.path.basename(impl_path)}")
+
+                    # Save debug sample (1 in N)
+                    save_debug_sample(temp_dir, self.debug_sample_dir, self.debug_sample_rate)
 
                     # Queue for analysis
                     task = AnalysisTask(
@@ -407,11 +509,19 @@ class DownloaderThread(threading.Thread):
                     )
                     self.analysis_queue.put(task)
                     self.processed_count += 1
+                    files_queued_this_commit += 1
+
+                    logger.info(f"[{self.repo_slug}] Queued {base_name} from {sha[:7]} ({self.processed_count}/{self.target_record_count} files)")
 
                     # Update stats
                     current = self.stats_dict.get("total_processed", 0)
                     self.stats_dict["total_processed"] = current + 1
                     self.stats_dict["queue_size"] = self.analysis_queue.qsize()
+
+                # Track commits that contributed files
+                if files_queued_this_commit > 0:
+                    self.commits_processed += 1
+                    logger.debug(f"[{self.repo_slug}] Commit {sha[:7]} contributed {files_queued_this_commit} files")
 
         except GithubException as e:
             if e.status == 403:
@@ -425,8 +535,8 @@ class DownloaderThread(threading.Thread):
             logger.error(f"[{self.repo_slug}] Error: {e}")
             self._update_status("error", action=str(e)[:40])
 
-        self._update_status("done", action=f"Done: {self.processed_count} commits")
-        logger.info(f"[{self.repo_slug}] Finished: {self.processed_count} commits processed")
+        self._update_status("done", action=f"Done: {self.processed_count} files from {self.commits_processed} commits")
+        logger.info(f"[{self.repo_slug}] Finished: {self.processed_count} files queued from {self.commits_processed} commits")
 
 
 # ============== Analyzer Process (Consumer) ==============
