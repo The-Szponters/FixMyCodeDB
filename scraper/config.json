@@ -1,10 +1,10 @@
 {
-  "github_token": "",
-  "repositories": [
-    {
-      "url": "https://github.com/xbmc/xbmc",
-      "target_record_count": 2,
-      "fix_regexes": [
+  "github_tokens": [],
+  "max_analysis_workers": 6,
+  "temp_storage_path": "/tmp_ram_scraper",
+  "repositories": ["https://github.com/xbmc/xbmc", "https://github.com/google/googletest", "https://github.com/opencv/opencv", "https://github.com/ClickHouse/ClickHouse", "https://github.com/SFML/SFML", "https://github.com/nlohmann/json"],
+  "target_record_count": 10,
+  "fix_regexes": [
         "(?i)\\bbug\\b",
         "(?i)\\bcrash",
         "(?i)\\bdefect",
@@ -39,6 +39,4 @@
         "(?i)array index",
         "(?i)invalid pointer"
       ]
-    }
-  ]
 }

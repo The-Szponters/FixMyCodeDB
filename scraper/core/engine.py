@@ -1,11 +1,11 @@
 """
-Refactored Engine with Producer-Consumer Architecture.
+Core scraper engine with Repository-Based Parallelism.
 
-This module implements a high-performance sharded scraper with:
-- Downloader processes (Producers): One per GitHub token, each handles a shard of repositories
-- Analyzer processes (Consumers): Worker pool that processes files from the queue
-- Shared in-memory state for fast commit deduplication
-- TUI-compatible status updates via shared dictionary
+This module implements:
+- 1 Downloader Thread per Repository (threading.Thread for I/O-bound operations)
+- Multiple downloaders share tokens via round-robin with thread-safe rate limiting
+- Analyzer processes (Consumers): Process commits with cppcheck and save to DB
+- TokenManager for thread-safe GitHub API access with rate limit handling
 """
 
 import hashlib
@@ -16,6 +16,8 @@ import os
 import re
 import shutil
 import signal
+import tempfile
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -29,6 +31,15 @@ from github import Auth, Github, GithubException
 
 from scraper.config.config_utils import load_config
 from scraper.labeling.labeler import Labeler
+
+DEBUG_MODE = os.getenv("SCRAPER_DEBUG", "0") == "1"
+
+if DEBUG_MODE:
+    logging.basicConfig(
+        level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+else:
+    logging.basicConfig(level=logging.CRITICAL)
 
 logger = logging.getLogger(__name__)
 
@@ -49,27 +60,6 @@ def get_repo_slug(url: str) -> str:
     if match:
         return f"{match.group(1)}/{match.group(2)}"
     raise ValueError(f"Invalid GitHub URL: {url}")
-
-
-def shard_repositories(repositories: List[str], num_shards: int) -> List[List[str]]:
-    """
-    Split repository list into N even chunks for sharding.
-
-    Args:
-        repositories: List of repository URLs
-        num_shards: Number of shards (equal to number of tokens)
-
-    Returns:
-        List of repository lists, one per shard
-    """
-    if num_shards <= 0:
-        return [repositories]
-
-    shards = [[] for _ in range(num_shards)]
-    for i, repo in enumerate(repositories):
-        shards[i % num_shards].append(repo)
-
-    return shards
 
 
 # ============== Data Classes ==============
@@ -262,35 +252,133 @@ def save_payload_to_file(payload: Dict[str, Any], output_dir: str = "extracted_d
         logger.error(f"Failed to save payload locally: {e}")
 
 
-# ============== Downloader Process (Producer) ==============
+# ============== Token Manager for Thread-Safe Token Sharing ==============
 
-class DownloaderProcess(mp.Process):
+class TokenManager:
     """
-    Producer process that downloads commits from assigned repositories.
+    Thread-safe manager for GitHub API tokens.
 
-    Each downloader:
-    - Has exactly one GitHub token assigned
-    - Handles a shard of repositories (round-robin)
-    - Downloads files to tmpfs
-    - Pushes analysis tasks to the shared queue
+    Handles:
+    - Round-robin token assignment to downloaders
+    - Per-token rate limit tracking and blocking
+    - Thread-safe access via locks
+    """
+
+    def __init__(self, tokens: List[str]):
+        if not tokens:
+            raise ValueError("At least one GitHub token is required")
+
+        self.tokens = tokens
+        self.token_count = len(tokens)
+
+        # Per-token locks and rate limit info
+        self._token_locks: Dict[str, threading.Lock] = {t: threading.Lock() for t in tokens}
+        self._rate_limit_reset: Dict[str, float] = {t: 0.0 for t in tokens}  # Unix timestamp
+        self._rate_limit_remaining: Dict[str, int] = {t: 5000 for t in tokens}
+
+        # Global lock for status updates
+        self._status_lock = threading.Lock()
+
+        # Token labels (A, B, C, ...)
+        self._token_labels = {t: chr(65 + i) for i, t in enumerate(tokens)}
+
+    def get_token_for_index(self, index: int) -> str:
+        """Get token for a downloader index (round-robin assignment)."""
+        return self.tokens[index % self.token_count]
+
+    def get_token_label(self, token: str) -> str:
+        """Get human-readable label for a token (A, B, C, ...)."""
+        return self._token_labels.get(token, "?")
+
+    def acquire_token(self, token: str, timeout: float = 300) -> bool:
+        """
+        Acquire permission to use a token (thread-safe).
+        Blocks if rate limited until reset time or timeout.
+
+        Returns True if acquired, False if timeout.
+        """
+        start_time = time.time()
+
+        while True:
+            # Check if rate limited
+            reset_time = self._rate_limit_reset.get(token, 0)
+            now = time.time()
+
+            if reset_time > now:
+                # Token is rate limited - wait
+                wait_time = min(reset_time - now, timeout - (now - start_time))
+                if wait_time <= 0:
+                    return False  # Timeout
+
+                label = self.get_token_label(token)
+                logger.debug(f"Token {label} rate limited, waiting {wait_time:.1f}s")
+                time.sleep(min(wait_time, 5.0))  # Check every 5s max
+                continue
+
+            # Token available
+            return True
+
+    def update_rate_limit(self, token: str, remaining: int, reset_timestamp: float):
+        """Update rate limit info after an API call."""
+        with self._status_lock:
+            self._rate_limit_remaining[token] = remaining
+            if remaining <= 0:
+                self._rate_limit_reset[token] = reset_timestamp
+            else:
+                self._rate_limit_reset[token] = 0.0
+
+    def handle_rate_limit_error(self, token: str, reset_timestamp: float):
+        """Handle a 403 rate limit error - mark token as blocked."""
+        with self._status_lock:
+            self._rate_limit_reset[token] = reset_timestamp
+            self._rate_limit_remaining[token] = 0
+
+        label = self.get_token_label(token)
+        logger.warning(f"Token {label} rate limited until {datetime.fromtimestamp(reset_timestamp)}")
+
+    def get_token_status(self, token: str) -> Dict[str, Any]:
+        """Get current status of a token."""
+        return {
+            "label": self.get_token_label(token),
+            "remaining": self._rate_limit_remaining.get(token, 0),
+            "reset_time": self._rate_limit_reset.get(token, 0),
+            "is_limited": self._rate_limit_reset.get(token, 0) > time.time()
+        }
+
+
+# ============== Downloader Thread (1 per Repository) ==============
+
+class DownloaderThread(threading.Thread):
+    """
+    Downloader thread that handles exactly ONE repository.
+
+    Features:
+    - Uses shared TokenManager for thread-safe API access
+    - Automatically handles rate limiting without blocking other threads
+    - Reports status to shared dict for TUI display
     """
 
     def __init__(
         self,
-        process_id: int,
+        thread_id: int,
+        repo_url: str,
         token: str,
-        repositories: List[str],
+        token_manager: TokenManager,
         analysis_queue: Queue,
         state_dict: DictProxy,
         status_dict: DictProxy,
         stats_dict: DictProxy,
         config: Dict[str, Any],
-        stop_event: "mp.synchronize.Event",
+        stop_event: threading.Event,
     ):
-        super().__init__(name=f"Downloader-{process_id}")
-        self.process_id = process_id
+        repo_slug = get_repo_slug(repo_url)
+        super().__init__(name=f"DL-{repo_slug}", daemon=True)
+
+        self.thread_id = thread_id
+        self.repo_url = repo_url
+        self.repo_slug = repo_slug
         self.token = token
-        self.repositories = repositories
+        self.token_manager = token_manager
         self.analysis_queue = analysis_queue
         self.state_dict = state_dict
         self.status_dict = status_dict
@@ -304,102 +392,108 @@ class DownloaderProcess(mp.Process):
         self.fix_regexes = config.get("fix_regexes", [])
         self.target_record_count = config.get("target_record_count", 1000)
 
-    def _update_status(self, status: str, repo: str = "", commit: str = "", action: str = ""):
+        # Track progress
+        self.commits_processed = 0
+        self.total_commits = 0
+
+    def _update_status(self, status: str, commit: str = "", action: str = "",
+                       progress: str = ""):
         """Update status in shared dict for TUI display."""
-        key = f"P{self.process_id}"
+        key = f"D{self.thread_id}"
+        token_label = self.token_manager.get_token_label(self.token)
+
         self.status_dict[key] = {
-            "type": "producer",
+            "type": "downloader",
             "status": status,
-            "repo": repo,
+            "repo": self.repo_slug,
             "commit": commit,
             "action": action,
-            "token_suffix": self.token[-6:] if self.token else "N/A",
+            "progress": progress,
+            "token_label": token_label,
             "timestamp": time.time()
         }
 
-    def _is_commit_processed(self, repo_slug: str, commit_sha: str) -> bool:
-        """Check if commit was already processed (from shared memory)."""
-        key = f"processed:{repo_slug}:{commit_sha}"
+    def _is_commit_processed(self, commit_sha: str) -> bool:
+        """Check if commit was already processed."""
+        key = f"processed:{self.repo_slug}:{commit_sha}"
         return key in self.state_dict
 
-    def _mark_commit_processed(self, repo_slug: str, commit_sha: str):
-        """Mark commit as processed in shared memory."""
-        key = f"processed:{repo_slug}:{commit_sha}"
+    def _mark_commit_processed(self, commit_sha: str):
+        """Mark commit as processed."""
+        key = f"processed:{self.repo_slug}:{commit_sha}"
         self.state_dict[key] = True
 
     def run(self):
-        """Main producer loop."""
-        # Set up signal handling
-        signal.signal(signal.SIGTERM, lambda s, f: None)
-
-        logger.info(f"Downloader {self.process_id} starting with {len(self.repositories)} repos")
-        self._update_status("starting")
+        """Main downloader thread loop."""
+        logger.info(f"Downloader [{self.repo_slug}] starting")
+        self._update_status("starting", action="Initializing...")
 
         # Initialize GitHub client
         try:
             auth = Auth.Token(self.token)
             github_client = Github(auth=auth)
+            # Verify authentication
             user = github_client.get_user().login
-            logger.info(f"Downloader {self.process_id} authenticated as: {user}")
+            logger.debug(f"[{self.repo_slug}] Authenticated as: {user}")
         except Exception as e:
-            logger.error(f"Downloader {self.process_id} auth failed: {e}")
+            logger.error(f"[{self.repo_slug}] Auth failed: {e}")
             self._update_status("error", action=f"Auth failed: {e}")
             return
 
-        # Round-robin through repositories
-        repo_index = 0
-        while not self.stop_event.is_set():
-            if not self.repositories:
-                logger.warning(f"Downloader {self.process_id}: No repositories assigned")
-                break
+        # Process repository until stop or batch complete
+        try:
+            self._process_repository(github_client)
+        except Exception as e:
+            logger.error(f"[{self.repo_slug}] Error: {e}")
+            self._update_status("error", action=str(e)[:50])
 
-            # Get current repo (round-robin)
-            repo_url = self.repositories[repo_index % len(self.repositories)]
-            repo_index += 1
+        self._update_status("done", action=f"Completed {self.commits_processed} commits")
+        logger.info(f"Downloader [{self.repo_slug}] finished: {self.commits_processed} commits")
 
-            try:
-                self._process_repository(github_client, repo_url)
-            except Exception as e:
-                logger.error(f"Error processing {repo_url}: {e}")
-                self._update_status("error", repo=repo_url, action=str(e))
+    def _process_repository(self, github_client: Github):
+        """Process commits from the assigned repository."""
+        self._update_status("working", action="Fetching commits...")
 
-        self._update_status("done")
-        logger.info(f"Downloader {self.process_id} finished")
-
-    def _process_repository(self, github_client: Github, repo_url: str):
-        """Process a single repository - fetch and queue commits."""
-        repo_slug = get_repo_slug(repo_url)
-        self._update_status("working", repo=repo_slug, action="Fetching commits")
+        # Acquire token before API call
+        if not self.token_manager.acquire_token(self.token):
+            logger.warning(f"[{self.repo_slug}] Timeout waiting for token")
+            return
 
         try:
-            repo = github_client.get_repo(repo_slug)
+            repo = github_client.get_repo(self.repo_slug)
+        except GithubException as e:
+            self._handle_github_error(e)
+            return
         except Exception as e:
-            logger.error(f"Could not access {repo_url}: {e}")
+            logger.error(f"[{self.repo_slug}] Could not access repo: {e}")
             return
 
         # Get commits
-        commits = repo.get_commits()
+        try:
+            commits = repo.get_commits()
+            # Estimate total (may not be accurate for large repos)
+            self.total_commits = min(commits.totalCount, self.batch_size)
+        except GithubException as e:
+            self._handle_github_error(e)
+            return
 
-        processed_in_batch = 0
-        commit_index = 0
-
+        # Process commits
         for commit_wrapper in commits:
             if self.stop_event.is_set():
                 break
 
-            if processed_in_batch >= self.batch_size:
+            if self.commits_processed >= self.batch_size:
                 break
 
             sha = commit_wrapper.sha
-            commit_index += 1
 
             # Skip if already processed
-            if self._is_commit_processed(repo_slug, sha):
+            if self._is_commit_processed(sha):
                 continue
 
             msg = commit_wrapper.commit.message
 
-            # Check if commit message matches fix patterns
+            # Check fix patterns
             if self.fix_regexes:
                 matched = any(
                     re.search(pattern, msg, re.IGNORECASE | re.MULTILINE)
@@ -413,39 +507,68 @@ class DownloaderProcess(mp.Process):
                 continue
             parent_sha = commit_wrapper.parents[0].sha
 
-            self._update_status(
-                "working",
-                repo=repo_slug,
-                commit=sha[:7],
-                action=f"Downloading {processed_in_batch + 1}/{self.batch_size}"
-            )
+            # Update progress
+            progress = f"{self.commits_processed + 1}/{self.batch_size}"
+            self._update_status("working", commit=sha[:7],
+                              action=f"Downloading Commit {progress}")
 
-            # Process files in this commit
+            # Acquire token before processing
+            if not self.token_manager.acquire_token(self.token):
+                logger.warning(f"[{self.repo_slug}] Timeout waiting for token")
+                break
+
             try:
                 self._process_commit_files(
-                    repo, repo_url, repo_slug, commit_wrapper, parent_sha
+                    repo, commit_wrapper, parent_sha, github_client
                 )
-                processed_in_batch += 1
-                self._mark_commit_processed(repo_slug, sha)
+                self.commits_processed += 1
+                self._mark_commit_processed(sha)
 
-                # Update stats
-                current = self.stats_dict.get("total_processed", 0)
-                self.stats_dict["total_processed"] = current + 1
+                # Update global stats
+                with threading.Lock():
+                    current = self.stats_dict.get("total_processed", 0)
+                    self.stats_dict["total_processed"] = current + 1
 
             except GithubException as e:
-                if e.status == 403:
-                    logger.warning(f"Rate limited on {repo_slug}")
-                    time.sleep(60)  # Wait for rate limit
-                else:
-                    raise
+                if not self._handle_github_error(e):
+                    break  # Unrecoverable error
+
+    def _handle_github_error(self, e: GithubException) -> bool:
+        """
+        Handle GitHub API errors.
+        Returns True if should continue, False if should stop.
+        """
+        if e.status == 403:
+            # Rate limited
+            reset_time = time.time() + 60  # Default: wait 60s
+
+            # Try to get actual reset time from headers
+            if hasattr(e, 'headers') and 'X-RateLimit-Reset' in e.headers:
+                reset_time = float(e.headers['X-RateLimit-Reset'])
+
+            self.token_manager.handle_rate_limit_error(self.token, reset_time)
+            self._update_status("rate_limited",
+                              action=f"Rate limited, waiting...")
+
+            # Wait for rate limit reset
+            if self.token_manager.acquire_token(self.token, timeout=300):
+                return True  # Recovered
+            return False  # Timeout
+
+        elif e.status == 404:
+            logger.warning(f"[{self.repo_slug}] Repository not found or no access")
+            return False
+
+        else:
+            logger.error(f"[{self.repo_slug}] GitHub error {e.status}: {e}")
+            return False
 
     def _process_commit_files(
         self,
         repo: Any,
-        repo_url: str,
-        repo_slug: str,
         commit_wrapper: Any,
-        parent_sha: str
+        parent_sha: str,
+        github_client: Github
     ):
         """Process files in a commit and queue them for analysis."""
         sha = commit_wrapper.sha
@@ -454,6 +577,9 @@ class DownloaderProcess(mp.Process):
         repo_files_cache: Optional[List[str]] = None
 
         for f in files_modified:
+            if self.stop_event.is_set():
+                break
+
             path = f.filename
 
             # Skip removed files, test files, non-C++ files
@@ -489,7 +615,7 @@ class DownloaderProcess(mp.Process):
             # Create temp directory for this file pair
             temp_dir = os.path.join(
                 self.temp_storage_path,
-                f"{repo_slug.replace('/', '_')}_{sha[:8]}_{base_name}"
+                f"{self.repo_slug.replace('/', '_')}_{sha[:8]}_{base_name}"
             )
             os.makedirs(temp_dir, exist_ok=True)
 
@@ -519,8 +645,8 @@ class DownloaderProcess(mp.Process):
 
                 # Create and queue analysis task
                 task = AnalysisTask(
-                    repo_slug=repo_slug,
-                    repo_url=repo_url,
+                    repo_slug=self.repo_slug,
+                    repo_url=self.repo_url,
                     commit_sha=sha,
                     parent_sha=parent_sha,
                     file_path=path,
@@ -539,8 +665,7 @@ class DownloaderProcess(mp.Process):
                 self.stats_dict["queue_size"] = self.analysis_queue.qsize()
 
             except Exception as e:
-                logger.error(f"Error downloading files for {sha[:7]}: {e}")
-                # Cleanup on error
+                logger.error(f"[{self.repo_slug}] Error downloading files for {sha[:7]}: {e}")
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
 
