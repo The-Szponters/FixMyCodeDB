@@ -179,6 +179,21 @@ def save_result(entry_id, is_valid, file_name, groups):
         )
 
 
+import re
+
+
+def parse_cppcheck_output(output):
+    """Parses cppcheck output to extract unique error IDs."""
+    errors = set()
+    # Matches strings in brackets like [unusedFunction]
+    matches = re.findall(r"\[([a-zA-Z0-9_]+)\]", output)
+    for match in matches:
+        if match != "missingInclude":
+            errors.add(match)
+    # Sort for consistent output
+    return sorted(list(errors))
+
+
 def process_file(json_file):
     """Przetwarza pojedynczy plik JSON."""
     cleanup_output_dir()
@@ -222,10 +237,14 @@ def process_file(json_file):
     print("-" * 20 + " ACTIVE CPPCHECK ANALYSIS " + "-" * 20)
     print(f"Analyzing Original Code ({original_path})...")
     output_original = run_cppcheck(original_path)
-    if output_original.strip():
-        print(output_original.strip())
+    # Parse and print errors
+    errors_original = parse_cppcheck_output(output_original)
+    if errors_original:
+        print(f"Detected Errors: {', '.join(errors_original)}")
+        # Optional: Print raw output if needed, but request asked to just show errors
+        # print(output_original.strip())
     else:
-        print("(No output from cppcheck)")
+        print("Detected Errors: None")
 
     if code_fixed:
         with open(fixed_path, "w", encoding="utf-8") as f:
@@ -233,10 +252,12 @@ def process_file(json_file):
 
         print(f"\nAnalyzing Fixed Code ({fixed_path})...")
         output_fixed = run_cppcheck(fixed_path)
-        if output_fixed.strip():
-            print(output_fixed.strip())
+        # Parse and print errors
+        errors_fixed = parse_cppcheck_output(output_fixed)
+        if errors_fixed:
+            print(f"Detected Errors: {', '.join(errors_fixed)}")
         else:
-            print("(No output from cppcheck)")
+            print("Detected Errors: None")
     else:
         print("\nNo Fixed Code available in this entry.")
 
