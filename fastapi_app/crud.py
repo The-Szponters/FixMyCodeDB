@@ -45,7 +45,12 @@ async def delete_entry(db: AsyncIOMotorDatabase, entry_id: str) -> int:
     return result.deleted_count
 
 
-async def list_entries(db: AsyncIOMotorDatabase, filter_dict: Dict = {}, sort_dict: Dict = {}, limit: int = 100) -> List[CodeEntry]:
+async def list_entries(
+    db: AsyncIOMotorDatabase,
+    filter_dict: Dict = {},
+    sort_dict: Dict = {},
+    limit: int = 100,
+) -> List[CodeEntry]:
 
     if "_id" in filter_dict and isinstance(filter_dict["_id"], str):
         try:
@@ -59,11 +64,14 @@ async def list_entries(db: AsyncIOMotorDatabase, filter_dict: Dict = {}, sort_di
         sort_list = [(k, v) for k, v in sort_dict.items()]
         cursor = cursor.sort(sort_list)
 
-    docs = await cursor.to_list(length=limit)
+    length = limit if limit > 0 else None
+    docs = await cursor.to_list(length=length)
     return [CodeEntry(**doc) for doc in docs]
 
 
-async def add_to_cppcheck_labels(db: AsyncIOMotorDatabase, entry_id: str, labels: List[str]) -> int:
+async def add_to_cppcheck_labels(
+    db: AsyncIOMotorDatabase, entry_id: str, labels: List[str]
+) -> int:
     """Add labels to the labels.cppcheck array (avoiding duplicates)."""
     try:
         oid = ObjectId(entry_id)
@@ -71,13 +79,14 @@ async def add_to_cppcheck_labels(db: AsyncIOMotorDatabase, entry_id: str, labels
         return 0
 
     result = await db[COLL].update_one(
-        {"_id": oid},
-        {"$addToSet": {"labels.cppcheck": {"$each": labels}}}
+        {"_id": oid}, {"$addToSet": {"labels.cppcheck": {"$each": labels}}}
     )
     return result.modified_count
 
 
-async def remove_from_cppcheck_labels(db: AsyncIOMotorDatabase, entry_id: str, labels: List[str]) -> int:
+async def remove_from_cppcheck_labels(
+    db: AsyncIOMotorDatabase, entry_id: str, labels: List[str]
+) -> int:
     """Remove labels from the labels.cppcheck array."""
     try:
         oid = ObjectId(entry_id)
@@ -85,7 +94,6 @@ async def remove_from_cppcheck_labels(db: AsyncIOMotorDatabase, entry_id: str, l
         return 0
 
     result = await db[COLL].update_one(
-        {"_id": oid},
-        {"$pull": {"labels.cppcheck": {"$in": labels}}}
+        {"_id": oid}, {"$pull": {"labels.cppcheck": {"$in": labels}}}
     )
     return result.modified_count

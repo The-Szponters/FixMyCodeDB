@@ -2,6 +2,7 @@
 CLI Handlers for non-interactive command-line operations.
 Each handler corresponds to a CLI command (--scrape, --list-all, etc.)
 """
+
 import csv
 import json
 import os
@@ -127,7 +128,7 @@ def handle_scrape(config_path: str) -> int:
 def handle_list_all() -> int:
     """Fetch and display all records from the backend."""
     try:
-        response = requests.get(f"{API_BASE}/entries/", timeout=10)
+        response = requests.get(f"{API_BASE}/entries/", params={"limit": 0}, timeout=10)
         response.raise_for_status()
         entries = response.json()
         _print_entries_table(entries)
@@ -147,7 +148,7 @@ def handle_list_labels(labels: List[str]) -> int:
     """Fetch and display records matching all specified labels."""
     try:
         mongo_filter = labels_to_filter(labels)
-        payload = {"filter": mongo_filter, "limit": 1000, "sort": {}}
+        payload = {"filter": mongo_filter, "limit": 0, "sort": {}}
         response = requests.post(f"{API_BASE}/entries/query/", json=payload, timeout=10)
         response.raise_for_status()
         entries = response.json()
@@ -171,7 +172,7 @@ def _print_entries_table(entries: list) -> None:
         print("No entries found.")
         return
 
-    print(f"\n{'_id':<26} | {'Labels (groups)':<50}")
+    print(f"\n{'_id':<26} | {'Labels':<50}")
     print("-" * 80)
     for entry in entries:
         entry_id = entry.get("_id", "N/A")
@@ -179,11 +180,10 @@ def _print_entries_table(entries: list) -> None:
         groups = labels.get("groups", {})
         # Get active group labels
         active_groups = [k for k, v in groups.items() if v is True]
-        cppcheck = labels.get("cppcheck", [])
-        all_labels = active_groups + cppcheck
-        labels_str = ", ".join(all_labels[:5])
-        if len(all_labels) > 5:
-            labels_str += f" (+{len(all_labels) - 5} more)"
+
+        labels_str = ", ".join(active_groups[:5])
+        if len(active_groups) > 5:
+            labels_str += f" (+{len(active_groups) - 5} more)"
         print(f"{entry_id:<26} | {labels_str:<50}")
     print(f"\nTotal: {len(entries)} entries")
 
@@ -284,14 +284,22 @@ def _unflatten_csv_row(row: dict) -> dict:
             "cppcheck": json.loads(row.get("labels_cppcheck", "[]")),
             "clang": json.loads(row.get("labels_clang", "{}")),
             "groups": {
-                "memory_management": row.get("labels_memory_management", "").lower() == "true",
-                "invalid_access": row.get("labels_invalid_access", "").lower() == "true",
+                "memory_management": row.get("labels_memory_management", "").lower()
+                == "true",
+                "invalid_access": row.get("labels_invalid_access", "").lower()
+                == "true",
                 "uninitialized": row.get("labels_uninitialized", "").lower() == "true",
                 "concurrency": row.get("labels_concurrency", "").lower() == "true",
                 "logic_error": row.get("labels_logic_error", "").lower() == "true",
                 "resource_leak": row.get("labels_resource_leak", "").lower() == "true",
-                "security_portability": row.get("labels_security_portability", "").lower() == "true",
-                "code_quality_performance": row.get("labels_code_quality_performance", "").lower() == "true",
+                "security_portability": row.get(
+                    "labels_security_portability", ""
+                ).lower()
+                == "true",
+                "code_quality_performance": row.get(
+                    "labels_code_quality_performance", ""
+                ).lower()
+                == "true",
             },
         },
     }
@@ -301,7 +309,9 @@ def _unflatten_csv_row(row: dict) -> dict:
 # ============================================================================
 # Export Handlers
 # ============================================================================
-def handle_export_all(folder_path: str, format_type: str, labels: Optional[List[str]] = None) -> int:
+def handle_export_all(
+    folder_path: str, format_type: str, labels: Optional[List[str]] = None
+) -> int:
     """Export all (or filtered) records from the backend to files."""
     folder = Path(folder_path)
     folder.mkdir(parents=True, exist_ok=True)
@@ -311,14 +321,20 @@ def handle_export_all(folder_path: str, format_type: str, labels: Optional[List[
             # Filter by labels
             mongo_filter = labels_to_filter(labels)
             payload = {"filter": mongo_filter, "limit": 10000, "sort": {}}
-            response = requests.post(f"{API_BASE}/entries/query/", json=payload, timeout=30)
+            response = requests.post(
+                f"{API_BASE}/entries/query/", json=payload, timeout=30
+            )
             response.raise_for_status()
             entries = response.json()
-            print(f"[*] Found {len(entries)} entries matching labels: {', '.join(labels)}")
+            print(
+                f"[*] Found {len(entries)} entries matching labels: {', '.join(labels)}"
+            )
         else:
             # Export all via streaming endpoint
             entries = []
-            with requests.get(f"{API_BASE}/entries/export-all", stream=True, timeout=(10, None)) as response:
+            with requests.get(
+                f"{API_BASE}/entries/export-all", stream=True, timeout=(10, None)
+            ) as response:
                 response.raise_for_status()
                 for line in response.iter_lines(decode_unicode=True):
                     if line:
@@ -393,7 +409,9 @@ def _flatten_entry(entry: dict) -> dict:
         "labels_logic_error": str(groups.get("logic_error", False)),
         "labels_resource_leak": str(groups.get("resource_leak", False)),
         "labels_security_portability": str(groups.get("security_portability", False)),
-        "labels_code_quality_performance": str(groups.get("code_quality_performance", False)),
+        "labels_code_quality_performance": str(
+            groups.get("code_quality_performance", False)
+        ),
     }
     return flat
 
@@ -401,7 +419,11 @@ def _flatten_entry(entry: dict) -> dict:
 # ============================================================================
 # Edit Handlers
 # ============================================================================
-def handle_edit_labels(entry_id: str, add_labels: Optional[List[str]] = None, remove_labels: Optional[List[str]] = None) -> int:
+def handle_edit_labels(
+    entry_id: str,
+    add_labels: Optional[List[str]] = None,
+    remove_labels: Optional[List[str]] = None,
+) -> int:
     """Add or remove labels from an entry via the backend PATCH endpoint."""
     if not add_labels and not remove_labels:
         print("[!] Error: Must specify --add-label or --remove-label")
@@ -413,7 +435,9 @@ def handle_edit_labels(entry_id: str, add_labels: Optional[List[str]] = None, re
     }
 
     try:
-        response = requests.patch(f"{API_BASE}/entries/{entry_id}/labels", json=payload, timeout=10)
+        response = requests.patch(
+            f"{API_BASE}/entries/{entry_id}/labels", json=payload, timeout=10
+        )
         if response.status_code == 404:
             print(f"[!] Error: Entry '{entry_id}' not found.")
             return 1
